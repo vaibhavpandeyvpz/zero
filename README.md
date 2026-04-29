@@ -14,7 +14,9 @@ Web UI for **Hooman**: chat with your agent, manage MCP servers and skills, and 
   <img src=".github/screenshot.png" alt="Zero app screenshot" width="1000" />
 </p>
 
-**Repository:** [github.com/vaibhavpandeyvpz/zero](https://github.com/vaibhavpandeyvpz/zero)
+## Related
+
+**Want the terminal-first agent** with same multi-channel runtime, MCPs, skills, local coding agent? Use [**Hooman**](https://github.com/vaibhavpandeyvpz/hooman) — [README](https://github.com/vaibhavpandeyvpz/hooman#readme).
 
 ## Requirements
 
