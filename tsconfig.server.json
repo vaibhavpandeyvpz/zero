@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "allowImportingTsExtensions": false
+  },
+  "include": [
+    "src/server/**/*.ts",
+    "src/lib/**/*.ts",
+    "src/zero-hc.ts",
+    "src/client/types.ts"
+  ],
+  "exclude": ["node_modules", "src/app", "src/components", "src/theme"]
+}

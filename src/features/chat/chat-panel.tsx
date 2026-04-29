@@ -1,0 +1,667 @@
+"use client";
+
+import { useState } from "react";
+import type { ChangeEvent, DragEvent } from "react";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ClipboardListIcon,
+  FileTextIcon,
+  Loader2Icon,
+  SendIcon,
+  SparklesIcon,
+  SquareIcon,
+  UploadIcon,
+  WrenchIcon,
+  XIcon,
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type {
+  ChannelModeStatus,
+  ChatLine,
+  ChatSessionSnapshot,
+  UploadedAttachment,
+} from "@/client/types";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import {
+  attachmentPreviewUrl,
+  isImageAttachment,
+  parseMessageAttachments,
+  type AttachmentPreview,
+} from "./attachments";
+import { useAutoScroll } from "./use-auto-scroll";
+import { useTextareaAutosize } from "./use-textarea-autosize";
+
+export function ChatPanel(props: {
+  session: ChatSessionSnapshot | null;
+  agentName: string;
+  input: string;
+  setInput: (value: string) => void;
+  attachments: UploadedAttachment[];
+  uploadingAttachments: boolean;
+  onAddAttachments: (files: File[]) => Promise<void>;
+  onRemoveAttachment: (name: string) => void;
+  daemon?: ChannelModeStatus;
+  onSubmit: () => Promise<void>;
+  onCancel: () => Promise<void>;
+  onToggleDaemon: (enabled: boolean) => Promise<void>;
+  onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
+}) {
+  const lines = props.session?.lines ?? [];
+  const todos = props.session?.todos;
+  const canSend = !props.uploadingAttachments;
+  const scrollRef = useAutoScroll([lines.length, props.session?.status]);
+  const textareaRef = useTextareaAutosize(props.input);
+
+  return (
+    <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <Card className="flex min-h-0 flex-col overflow-hidden pb-0">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Chat</CardTitle>
+              <CardDescription>
+                Talk to your agent. Channel messages can join the same queue.
+              </CardDescription>
+            </div>
+            <ChatStatusBlip status={props.session?.status ?? "ready"} />
+          </div>
+        </CardHeader>
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6">
+            {lines.length === 0 ? (
+              <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+                <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
+                  <SparklesIcon className="size-5" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Start a conversation</p>
+                  <p className="text-sm">Ask your agent to plan, research, or use connected tools.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
+                {lines.map((line) => (
+                  <ChatBubble key={line.id} line={line} agentName={props.agentName} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {props.session?.running && todos?.visible && todos.todos.length > 0 ? (
+            <TodoPanel todos={todos.todos} />
+          ) : null}
+
+          {props.session?.pendingApproval ? (
+            <div className="border-t bg-background/95 p-3 backdrop-blur sm:p-4">
+              <ApprovalCard
+                request={props.session.pendingApproval}
+                onApprove={props.onApprove}
+              />
+            </div>
+          ) : null}
+
+          <div className="border-t bg-background/95 px-3 pb-2 pt-3 backdrop-blur sm:px-4 sm:pb-3 sm:pt-4">
+            <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 rounded-2xl border bg-card p-2 shadow-sm">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+                <Textarea
+                  ref={textareaRef}
+                  rows={1}
+                  className="max-h-14 min-h-9 resize-none overflow-y-hidden"
+                  value={props.input}
+                  placeholder={props.session?.running ? "Type a message to queue after the current turn" : "Type a message"}
+                  onChange={(event) => props.setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey && !event.metaKey) {
+                      event.preventDefault();
+                      void props.onSubmit();
+                    }
+                  }}
+                />
+                <Button
+                  aria-label={props.session?.running ? "Stop current turn" : props.uploadingAttachments ? "Uploading" : "Send message"}
+                  disabled={!props.session?.running && !canSend}
+                  size="icon"
+                  variant={props.session?.running ? "outline" : "default"}
+                  onClick={props.session?.running ? props.onCancel : props.onSubmit}
+                >
+                  {props.session?.running ? (
+                    <SquareIcon className="size-4" />
+                  ) : props.uploadingAttachments ? (
+                    <Loader2Icon className="size-4 animate-spin" />
+                  ) : (
+                    <SendIcon className="size-4" />
+                  )}
+                </Button>
+              </div>
+              <AttachmentDropzone
+                attachments={props.attachments}
+                uploading={props.uploadingAttachments}
+                onAdd={props.onAddAttachments}
+                onRemove={props.onRemoveAttachment}
+              />
+              {props.daemon?.enabled ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  Channel messages share this agent queue.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="h-fit">
+        <CardHeader>
+          <CardTitle>Inputs</CardTitle>
+          <CardDescription>Channel messages join the same agent queue as chat.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Channels</p>
+              <p className="text-xs text-muted-foreground">Receive events from channels.</p>
+            </div>
+            <Switch
+              checked={props.daemon?.enabled ?? false}
+              onCheckedChange={(checked) => void props.onToggleDaemon(checked)}
+            />
+          </div>
+          <Separator />
+          <StatusRow label="Pending messages" value={String(props.daemon?.queued ?? 0)} />
+          <StatusRow label="Channel messages handled" value={String(props.daemon?.processed ?? 0)} />
+          <StatusRow label="Subscriptions" value={String(props.daemon?.subscriptions.length ?? 0)} />
+          {props.daemon?.lastError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Channel error</AlertTitle>
+              <AlertDescription>{props.daemon.lastError}</AlertDescription>
+            </Alert>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AttachmentDropzone(props: {
+  attachments: UploadedAttachment[];
+  uploading: boolean;
+  onAdd: (files: File[]) => Promise<void>;
+  onRemove: (name: string) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+
+  function filesFromList(fileList: FileList | null): File[] {
+    return fileList ? Array.from(fileList) : [];
+  }
+
+  function onInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = filesFromList(event.target.files);
+    event.target.value = "";
+    void props.onAdd(files);
+  }
+
+  function onDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragging(false);
+    void props.onAdd(filesFromList(event.dataTransfer.files));
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label
+        className={cn(
+          "flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed bg-muted/20 px-2.5 py-1.5 text-sm transition-colors",
+          dragging ? "border-primary bg-primary/10" : "hover:bg-muted/40",
+        )}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-background">
+            {props.uploading ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <UploadIcon className="size-4" />
+            )}
+          </span>
+          <span className="min-w-0 text-left">
+            <span className="block text-xs font-medium">
+              {props.uploading ? "Uploading attachments" : "Add attachments"}
+            </span>
+            <span className="block truncate text-xs text-muted-foreground">
+              Drop files here or click to choose.
+            </span>
+          </span>
+        </span>
+        <input
+          className="hidden"
+          type="file"
+          multiple
+          disabled={props.uploading}
+          onChange={onInputChange}
+        />
+      </label>
+      {props.attachments.length > 0 ? (
+        <AttachmentPreviewList
+          attachments={props.attachments}
+          onRemove={props.onRemove}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AttachmentPreviewList(props: {
+  attachments: AttachmentPreview[];
+  onRemove?: (name: string) => void;
+  variant?: "default" | "user";
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {props.attachments.map((attachment) => {
+        const label = attachment.originalName ?? attachment.name;
+        const isImage = isImageAttachment(attachment);
+        return (
+          <div
+            key={attachment.name}
+            className={cn(
+              "group relative flex max-w-48 items-center gap-2 rounded-lg border p-1.5 text-xs",
+              props.variant === "user"
+                ? "border-primary-foreground/15 bg-primary-foreground/10 text-primary-foreground"
+                : "bg-background",
+            )}
+          >
+            {isImage ? (
+              <span
+                className={cn(
+                  "flex size-10 shrink-0 overflow-hidden rounded-md",
+                  props.variant === "user" ? "bg-primary-foreground/15" : "bg-muted",
+                )}
+              >
+                <img
+                  alt={label}
+                  className="size-full object-cover"
+                  src={attachmentPreviewUrl(attachment.name)}
+                />
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  "flex size-10 shrink-0 items-center justify-center rounded-md",
+                  props.variant === "user"
+                    ? "bg-primary-foreground/15 text-primary-foreground/75"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                <FileTextIcon />
+              </span>
+            )}
+            <span className="min-w-0 truncate">{label}</span>
+            {props.onRemove ? (
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                type="button"
+                onClick={() => props.onRemove?.(attachment.name)}
+                aria-label={`Remove ${label}`}
+              >
+                <XIcon />
+              </Button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChatStatusBlip({ status }: { status: string }) {
+  const mode =
+    status === "streaming"
+      ? "response"
+      : status === "ready"
+        ? "idle"
+        : "thinking";
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium",
+        mode === "idle" && "bg-muted text-muted-foreground",
+        mode === "thinking" && "bg-blue-500/10 text-blue-500",
+        mode === "response" && "bg-emerald-500/10 text-emerald-500",
+      )}
+    >
+      <span className="relative flex size-2.5">
+        {mode !== "idle" ? (
+          <span
+            className={cn(
+              "absolute inline-flex size-full animate-ping rounded-full opacity-60",
+              mode === "thinking" ? "bg-blue-500" : "bg-emerald-500",
+            )}
+          />
+        ) : null}
+        <span
+          className={cn(
+            "relative inline-flex size-2.5 rounded-full",
+            mode === "idle" && "bg-muted-foreground/60",
+            mode === "thinking" && "bg-blue-500",
+            mode === "response" && "bg-emerald-500",
+          )}
+        />
+      </span>
+      <span>{mode === "idle" ? "idle" : mode}</span>
+    </div>
+  );
+}
+
+function ChatBubble({ line, agentName }: { line: ChatLine; agentName: string }) {
+  const isUser = line.role === "user";
+  const isAssistant = line.role === "assistant";
+  const isTool = line.role === "tool";
+  const headerIcon = !isTool && !line.done;
+  const label = isTool ? "Tool" : isAssistant ? agentName : (line.toolName ?? line.title ?? line.role);
+  const toolName = line.toolName ?? line.title ?? "Tool";
+  const userContent = isUser
+    ? parseMessageAttachments(line.content)
+    : { text: line.content, attachments: [] };
+  return (
+    <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
+      <div
+        className={cn(
+          "group max-w-[88%] rounded-3xl px-4 py-3 text-sm leading-6 shadow-sm",
+          isUser
+            ? "rounded-br-md bg-primary text-primary-foreground"
+            : isTool
+              ? "rounded-bl-md bg-card"
+              : "rounded-bl-md bg-card",
+        )}
+      >
+        {!isUser ? (
+          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+            {headerIcon ? (
+              <span className="flex size-5 items-center justify-center rounded-full border bg-background">
+                <Loader2Icon className="size-3 animate-spin" />
+              </span>
+            ) : null}
+            {isTool ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="font-medium">{label}</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{toolName}</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-medium">{label}</span>
+            )}
+            {!line.done ? <span>running</span> : null}
+          </div>
+        ) : null}
+
+        {line.reasoningContent ? (
+          <details
+            className="group mb-3 rounded-xl bg-muted/30 px-3 py-2"
+            open={!line.done}
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <span>Reasoning</span>
+              <ChevronDownIcon className="size-3 group-open:hidden" />
+              <ChevronUpIcon className="hidden size-3 group-open:block" />
+            </summary>
+            <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+              {line.reasoningContent}
+            </pre>
+          </details>
+        ) : null}
+
+        {isAssistant ? (
+          line.content ? (
+            <MarkdownContent content={line.content} />
+          ) : !line.done ? (
+            <AssistantResponseSkeleton />
+          ) : (
+            <MarkdownContent content="(empty)" />
+          )
+        ) : isTool ? (
+          <ToolArgumentsDisclosure content={line.content} />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {userContent.text ? (
+              <pre className="whitespace-pre-wrap font-sans">
+                {userContent.text}
+              </pre>
+            ) : null}
+            {userContent.attachments.length > 0 ? (
+              <AttachmentPreviewList
+                attachments={userContent.attachments}
+                variant="user"
+              />
+            ) : null}
+            {!userContent.text && userContent.attachments.length === 0 ? (
+              <pre className="whitespace-pre-wrap font-sans">(empty)</pre>
+            ) : null}
+          </div>
+        )}
+
+        {line.fileToolDisplay ? (
+          <FileDiffPreview display={line.fileToolDisplay} />
+        ) : null}
+
+        {line.resultContent ? (
+          <details className="group mt-3 rounded-xl bg-muted/30 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <span>Result</span>
+              <ChevronDownIcon className="size-3 group-open:hidden" />
+              <ChevronUpIcon className="hidden size-3 group-open:block" />
+            </summary>
+            <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
+              {line.resultContent}
+            </pre>
+          </details>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function AssistantResponseSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      <Skeleton className="h-4 w-56" />
+      <Skeleton className="h-4 w-40" />
+    </div>
+  );
+}
+
+function ToolArgumentsDisclosure({ content }: { content: string }) {
+  return (
+    <details className="group rounded-xl bg-muted/30 px-3 py-2">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+        <span>Parameters</span>
+        <ChevronDownIcon className="size-3 group-open:hidden" />
+        <ChevronUpIcon className="hidden size-3 group-open:block" />
+      </summary>
+      <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
+        {content || "(empty)"}
+      </pre>
+    </details>
+  );
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-auto prose-pre:rounded-md prose-pre:bg-muted prose-pre:p-3">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  );
+}
+
+function DiffBlock({ lines }: { lines: string[] }) {
+  return (
+    <pre className="max-h-52 overflow-auto rounded-md bg-background/70 p-2 font-mono text-xs">
+      {lines.map((line, index) => {
+        const added = line.startsWith("+") && !line.startsWith("+++");
+        const removed = line.startsWith("-") && !line.startsWith("---");
+        return (
+          <div
+            key={`${index}-${line}`}
+            className={cn(
+              "min-h-5 whitespace-pre-wrap px-1",
+              added && "bg-emerald-500/10 text-emerald-500",
+              removed && "bg-red-500/10 text-red-500",
+              !added && !removed && "text-muted-foreground",
+            )}
+          >
+            {line || " "}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
+function FileDiffPreview({
+  display,
+}: {
+  display: NonNullable<ChatLine["fileToolDisplay"]>;
+}) {
+  return (
+    <details className="group mt-3 rounded-xl bg-muted/30 px-3 py-2">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+        <span>Changes</span>
+        <ChevronDownIcon className="size-3 group-open:hidden" />
+        <ChevronUpIcon className="hidden size-3 group-open:block" />
+      </summary>
+      <div className="mt-2 flex flex-col gap-2">
+        {display.previews?.map((preview, index) => (
+          <DiffBlock
+            key={`preview-${index}`}
+            lines={preview.split("\n")}
+          />
+        ))}
+        {display.structuredPatch?.map((hunk, index) => (
+          <DiffBlock
+            key={`hunk-${index}`}
+            lines={hunk.lines}
+          />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function TodoPanel({
+  todos,
+}: {
+  todos: Array<{ content: string; status: string; activeForm: string }>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ClipboardListIcon />
+          Todos
+        </CardTitle>
+        <CardDescription>Current agent task list for this turn.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {todos.map((todo, index) => (
+          <div key={`${todo.content}-${index}`} className="flex items-start gap-2 text-sm">
+            <Badge variant={todo.status === "completed" ? "secondary" : "outline"}>
+              {todo.status}
+            </Badge>
+            <div>
+              <p>{todo.activeForm || todo.content}</p>
+              {todo.activeForm && todo.activeForm !== todo.content ? (
+                <p className="text-xs text-muted-foreground">{todo.content}</p>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ApprovalCard(props: {
+  request: NonNullable<ChatSessionSnapshot["pendingApproval"]>;
+  onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
+}) {
+  return (
+    <Card className="mx-auto w-full max-w-3xl">
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2">
+            <WrenchIcon className="size-4 text-muted-foreground" />
+            Tool approval required
+          </CardTitle>
+          <Badge variant="secondary">{props.request.toolName}</Badge>
+        </div>
+        {props.request.description ? (
+          <CardDescription className="line-clamp-2">
+            {props.request.description}
+          </CardDescription>
+        ) : null}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <div className="rounded-lg bg-muted/30 p-2">
+          <div className="mb-1 text-xs font-medium text-muted-foreground">
+            Parameters
+          </div>
+          <pre className="max-h-20 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed">
+            {props.request.inputPreview}
+          </pre>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" onClick={() => void props.onApprove("allow")}>
+            Allow once
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void props.onApprove("always")}
+          >
+            Always allow
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => void props.onApprove("deny")}
+          >
+            Deny
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}

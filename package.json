@@ -1,0 +1,84 @@
+{
+  "name": "zero",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero web interface for Hooman chat and configuration.",
+  "author": {
+    "name": "Vaibhav Pandey",
+    "email": "contact@vaibhavpandey.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vaibhavpandeyvpz/zero.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vaibhavpandeyvpz/zero/issues"
+  },
+  "homepage": "https://github.com/vaibhavpandeyvpz/zero#readme",
+  "license": "MIT",
+  "keywords": [
+    "zero",
+    "hooman",
+    "ai-agent",
+    "chat",
+    "nextjs",
+    "react",
+    "typescript",
+    "strands-agents",
+    "mcp",
+    "self-hosted"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "next build && tsc -p tsconfig.server.json",
+    "dev": "NODE_ENV=development pm2-runtime start src/server/api.ts --name zero --interpreter ./node_modules/.bin/tsx",
+    "start": "NODE_ENV=production pm2-runtime start dist/server/api.js --name zero",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@strands-agents/sdk": "^1.0.0-rc.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "commander": "^14.0.3",
+    "express": "^5.2.1",
+    "fastq": "^1.20.1",
+    "hoomanjs": "^1.21.1",
+    "lucide-react": "^0.553.0",
+    "multer": "^2.1.1",
+    "next": "^16.0.10",
+    "next-themes": "^0.4.6",
+    "openai": "^6.35.0",
+    "pm2": "^6.0.14",
+    "radix-ui": "^1.4.3",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "shadcn": "^4.6.0",
+    "shell-quote": "^1.8.3",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.0.3",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/shell-quote": "^1.7.5",
+    "tailwindcss": "^4.1.18",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
