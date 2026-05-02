@@ -80,4 +80,15 @@ export function registerChatRoutes(
       res.json({ session: session.snapshot() });
     }),
   );
+
+  app.post("/api/chat/:sessionId/yolo", (req, res) => {
+    const body = req.body as { yolo?: unknown };
+    if (typeof body.yolo !== "boolean") {
+      res.status(400).json({ error: 'Body must include boolean "yolo".' });
+      return;
+    }
+    const session = deps.chats.get(routeParam(req, "sessionId"));
+    session.setYolo(body.yolo);
+    res.json({ session: session.snapshot() });
+  });
 }

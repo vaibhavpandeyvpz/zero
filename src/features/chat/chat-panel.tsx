@@ -60,6 +60,27 @@ import {
 import { useAutoScroll } from "./use-auto-scroll";
 import { useTextareaAutosize } from "./use-textarea-autosize";
 
+const PROVIDER_MODEL_TAIL_MAX = 25;
+
+/** Keep up to `PROVIDER_MODEL_TAIL_MAX` chars from the end; prepend … when shortened. */
+function formatProviderModel(provider: string, model: string): string {
+  const combined = `${provider}/${model}`;
+  if (combined.length <= PROVIDER_MODEL_TAIL_MAX) {
+    return combined;
+  }
+  return `\u2026${combined.slice(-PROVIDER_MODEL_TAIL_MAX)}`;
+}
+
+function modelSelectTriggerLabel(
+  models: ChatSessionSnapshot["models"],
+  currentName: string,
+): string | null {
+  const entry = models.find((m) => m.name === currentName);
+  return entry
+    ? `${entry.name} · ${formatProviderModel(entry.provider, entry.model)}`
+    : null;
+}
+
 export function ChatPanel(props: {
   session: ChatSessionSnapshot | null;
   agentName: string;
@@ -73,6 +94,8 @@ export function ChatPanel(props: {
   onSubmit: () => Promise<void>;
   onCancel: () => Promise<void>;
   onSetModel: (name: string) => Promise<void>;
+  yolo: boolean;
+  onSetYolo: (enabled: boolean) => Promise<void>;
   onToggleDaemon: (enabled: boolean) => Promise<void>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
 }) {
@@ -84,156 +107,178 @@ export function ChatPanel(props: {
 
   return (
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-      <Card className="flex min-h-0 flex-col overflow-hidden pb-0">
-        <CardHeader>
-          <CardTitle>Chat</CardTitle>
-          <CardDescription>
-            Talk to your agent. Channel messages can join the same queue.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
-          <div
-            ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6"
-          >
-            {lines.length === 0 ? (
-              <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-                <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
-                  <SparklesIcon className="size-5" />
+      <div className="flex min-h-0 flex-col gap-4">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0">
+          <CardHeader>
+            <CardTitle>Chat</CardTitle>
+            <CardDescription>
+              Talk to your agent. Channel messages can join the same queue.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
+            <div
+              ref={scrollRef}
+              className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6"
+            >
+              {lines.length === 0 ? (
+                <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+                  <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
+                    <SparklesIcon className="size-5" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">
+                      Start a conversation
+                    </p>
+                    <p className="text-sm">
+                      Ask your agent to plan, research, or use connected tools.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-foreground">
-                    Start a conversation
-                  </p>
-                  <p className="text-sm">
-                    Ask your agent to plan, research, or use connected tools.
-                  </p>
+              ) : (
+                <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
+                  {lines.map((line) => (
+                    <ChatBubble
+                      key={line.id}
+                      line={line}
+                      agentName={props.agentName}
+                    />
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
-                {lines.map((line) => (
-                  <ChatBubble
-                    key={line.id}
-                    line={line}
-                    agentName={props.agentName}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {props.session?.running &&
-          todos?.visible &&
-          todos.todos.length > 0 ? (
-            <TodoPanel todos={todos.todos} />
-          ) : null}
-
-          {props.session?.approvals ? (
-            <div className="border-t bg-background/95 p-3 backdrop-blur sm:p-4">
-              <ApprovalCard
-                request={props.session.approvals}
-                onApprove={props.onApprove}
-              />
+              )}
             </div>
-          ) : null}
 
-          <div className="border-t bg-background/95 px-3 pb-2 pt-3 backdrop-blur sm:px-4 sm:pb-3 sm:pt-4">
-            <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 rounded-2xl border bg-card p-2 shadow-sm">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
-                <Textarea
-                  ref={textareaRef}
-                  rows={1}
-                  className="max-h-14 min-h-9 resize-none overflow-y-hidden"
-                  value={props.input}
-                  placeholder={
-                    props.session?.running
-                      ? "Type a message to queue after the current turn"
-                      : "Type a message"
-                  }
-                  onChange={(event) => props.setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "Enter" &&
-                      !event.shiftKey &&
-                      !event.metaKey
-                    ) {
-                      event.preventDefault();
-                      void props.onSubmit();
-                    }
-                  }}
+            {props.session?.running &&
+            todos?.visible &&
+            todos.todos.length > 0 ? (
+              <TodoPanel todos={todos.todos} />
+            ) : null}
+
+            {props.session?.approvals ? (
+              <div className="border-t bg-muted/30 p-3 sm:p-4">
+                <ApprovalCard
+                  request={props.session.approvals}
+                  onApprove={props.onApprove}
                 />
-                <Button
-                  aria-label={
-                    props.session?.running
-                      ? "Stop current turn"
-                      : props.uploadingAttachments
-                        ? "Uploading"
-                        : "Send message"
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="shrink-0 py-0">
+          <CardContent className="flex flex-col gap-2 p-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+              <Textarea
+                ref={textareaRef}
+                rows={1}
+                className="max-h-14 min-h-9 resize-none overflow-y-hidden"
+                value={props.input}
+                placeholder={
+                  props.session?.running
+                    ? "Type a message to queue after the current turn"
+                    : "Type a message"
+                }
+                onChange={(event) => props.setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.metaKey
+                  ) {
+                    event.preventDefault();
+                    void props.onSubmit();
                   }
-                  disabled={!props.session?.running && !canSend}
-                  size="icon"
-                  variant={props.session?.running ? "outline" : "default"}
-                  onClick={
-                    props.session?.running ? props.onCancel : props.onSubmit
+                }}
+              />
+              <Button
+                aria-label={
+                  props.session?.running
+                    ? "Stop current turn"
+                    : props.uploadingAttachments
+                      ? "Uploading"
+                      : "Send message"
+                }
+                disabled={!props.session?.running && !canSend}
+                size="icon"
+                variant={props.session?.running ? "outline" : "default"}
+                onClick={
+                  props.session?.running ? props.onCancel : props.onSubmit
+                }
+              >
+                {props.session?.running ? (
+                  <SquareIcon className="size-4" />
+                ) : props.uploadingAttachments ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <SendIcon className="size-4" />
+                )}
+              </Button>
+            </div>
+            <AttachmentDropzone
+              attachments={props.attachments}
+              uploading={props.uploadingAttachments}
+              onAdd={props.onAddAttachments}
+              onRemove={props.onRemoveAttachment}
+            />
+            {props.daemon?.enabled ? (
+              <p className="px-1 text-xs text-muted-foreground">
+                Channel messages share this agent queue.
+              </p>
+            ) : null}
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {props.session?.models.length ? (
+                  <Select
+                    value={props.session.model}
+                    disabled={props.session.running}
+                    onValueChange={(value) => void props.onSetModel(value)}
+                  >
+                    <SelectTrigger className="max-w-[28rem]">
+                      <SelectValue placeholder="Choose model">
+                        {modelSelectTriggerLabel(
+                          props.session.models,
+                          props.session.model,
+                        )}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {props.session.models.map((entry) => (
+                          <SelectItem key={entry.name} value={entry.name}>
+                            {entry.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                <Select
+                  value={props.yolo ? "on" : "off"}
+                  disabled={!props.session || props.session.running}
+                  onValueChange={(value) =>
+                    void props.onSetYolo(value === "on")
                   }
                 >
-                  {props.session?.running ? (
-                    <SquareIcon className="size-4" />
-                  ) : props.uploadingAttachments ? (
-                    <Loader2Icon className="size-4 animate-spin" />
-                  ) : (
-                    <SendIcon className="size-4" />
-                  )}
-                </Button>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Yolo">
+                      {props.yolo ? "Yolo · On" : "Yolo · Off"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="off">Off</SelectItem>
+                      <SelectItem value="on">On</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
-              <AttachmentDropzone
-                attachments={props.attachments}
-                uploading={props.uploadingAttachments}
-                onAdd={props.onAddAttachments}
-                onRemove={props.onRemoveAttachment}
-              />
-              {props.daemon?.enabled ? (
-                <p className="px-1 text-xs text-muted-foreground">
-                  Channel messages share this agent queue.
-                </p>
-              ) : null}
-              <div
-                className={cn(
-                  "mt-2 flex flex-wrap items-center gap-3 border-t pt-3",
-                  props.session?.models.length
-                    ? "justify-between"
-                    : "justify-end",
-                )}
-              >
-                {props.session?.models.length ? (
-                  <div className="min-w-56 flex-1">
-                    <Select
-                      value={props.session.model}
-                      disabled={props.session.running}
-                      onValueChange={(value) => void props.onSetModel(value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {props.session.models.map((entry) => (
-                            <SelectItem key={entry.name} value={entry.name}>
-                              {entry.name} • {entry.provider}/{entry.model}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
+              <div className="min-w-2 flex-1" aria-hidden />
+              <div className="shrink-0">
                 <ChatStatusBlip status={props.session?.status ?? "ready"} />
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="h-fit">
         <CardHeader>
@@ -256,6 +301,7 @@ export function ChatPanel(props: {
             />
           </div>
           <Separator />
+          <StatusRow label="Yolo" value={props.daemon?.yolo ? "On" : "Off"} />
           <StatusRow
             label="Pending messages"
             value={String(props.daemon?.queued ?? 0)}

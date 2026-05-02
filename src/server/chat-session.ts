@@ -129,7 +129,10 @@ export class ChatSession {
     if (!prompt.text && prompt.attachments.length === 0) {
       return;
     }
-    this.yolo = Boolean(input.yolo);
+    if (input.yolo !== undefined) {
+      this.yolo = Boolean(input.yolo);
+      this.worker.setDefaultYolo(this.yolo);
+    }
     this.queued.push(prompt);
     emit({ type: "turn.queued", queued: [...this.queued] });
     await this.runTurn({ ...prompt, emit }).catch((error) => {
@@ -163,6 +166,7 @@ export class ChatSession {
     return {
       sessionId: this.sessionId,
       running: this.running,
+      yolo: this.yolo,
       queued: [...this.queued],
       lines: [...this.lines],
       approvals: this.approval.pending,
@@ -177,6 +181,11 @@ export class ChatSession {
         default: entry.default,
       })),
     };
+  }
+
+  public setYolo(enabled: boolean): void {
+    this.yolo = enabled;
+    this.worker.setDefaultYolo(enabled);
   }
 
   public async setModel(name: string): Promise<void> {
@@ -204,6 +213,11 @@ export class ChatSession {
 
   public async close(): Promise<void> {
     this.queued.length = 0;
+    try {
+      this.agent?.cancel?.();
+    } catch {
+      /* ignore */
+    }
     await this.manager?.disconnect().catch(() => undefined);
     this.manager = null;
     this.agent = null;

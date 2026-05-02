@@ -186,6 +186,8 @@ export function ZeroShell() {
             onSubmit={chat.submitMessage}
             onCancel={chat.cancel}
             onSetModel={chat.setModel}
+            yolo={chat.session?.yolo ?? false}
+            onSetYolo={chat.setYolo}
             onToggleDaemon={data.toggleDaemon}
             onApprove={chat.approve}
           />

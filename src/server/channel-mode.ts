@@ -43,6 +43,7 @@ export class ChannelMode {
       processed: this.processed,
       lastMessageAt: this.lastMessageAt,
       lastError: this.lastError,
+      yolo: this.worker.getDefaultYolo(),
     };
   }
 
@@ -102,6 +103,7 @@ export class ChannelMode {
       userId: user,
       origin: channelOrigin(message),
       input: await channelMessageInput(message),
+      yolo: this.worker.getDefaultYolo(),
       onSuccess: () => {
         this.processed += 1;
       },

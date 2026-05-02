@@ -56,6 +56,8 @@ export type ChannelModeStatus = {
   processed: number;
   lastMessageAt?: string;
   lastError?: string;
+  /** Tool auto-approve for channel/daemon jobs (same preference as chat Yolo). */
+  yolo: boolean;
 };
 
 export type ChatRole = "user" | "assistant" | "system" | "tool";
@@ -83,6 +85,8 @@ export type ApprovalRequest = {
 export type ChatSessionSnapshot = {
   sessionId: string;
   running: boolean;
+  /** Auto-approve tools for this session; also updates channel/daemon preference when changed. */
+  yolo: boolean;
   model: string;
   models: Array<{
     name: string;

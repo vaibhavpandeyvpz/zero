@@ -175,6 +175,19 @@ export function setChatModel(
   );
 }
 
+export function setChatYolo(
+  sessionId: string,
+  body: { yolo: boolean },
+): Promise<{ session: ChatSessionSnapshot }> {
+  return request<{ session: ChatSessionSnapshot }>(
+    `/api/chat/${encodeURIComponent(sessionId)}/yolo`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 export function setDaemonMode(enabled: boolean): Promise<ChannelModeStatus> {
   return request<ChannelModeStatus>("/api/channels/daemon", {
     method: "POST",

@@ -35,6 +35,8 @@ export class AgentWorker {
   private defaultManager: McpManager | null = null;
   private activeJob: AgentWorkerJob | null = null;
   private activeAgent: WorkerAgent | null = null;
+  /** Shared with channel/daemon jobs (auto-approve tools). */
+  private defaultYolo = false;
   private readonly resetListeners = new Set<() => void | Promise<void>>();
   private readonly queue: fastq.queueAsPromised<AgentWorkerJob, void>;
 
@@ -47,6 +49,14 @@ export class AgentWorker {
       running: Boolean(this.activeJob),
       queued: this.queue.length(),
     };
+  }
+
+  public getDefaultYolo(): boolean {
+    return this.defaultYolo;
+  }
+
+  public setDefaultYolo(value: boolean): void {
+    this.defaultYolo = value;
   }
 
   public async enqueue(job: AgentWorkerJob): Promise<void> {
@@ -70,9 +80,15 @@ export class AgentWorker {
   }
 
   public async close(): Promise<void> {
+    try {
+      this.activeAgent?.cancel?.();
+    } catch {
+      /* ignore */
+    }
     this.queue.kill();
     await this.resetAgent();
     this.activeJob = null;
+    this.activeAgent = null;
   }
 
   private async resetAgent(): Promise<void> {

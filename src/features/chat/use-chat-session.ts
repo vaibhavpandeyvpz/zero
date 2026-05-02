@@ -5,6 +5,7 @@ import {
   decideApproval,
   getChatSession,
   setChatModel,
+  setChatYolo,
   streamMessage,
   uploadAttachments,
 } from "@/client/api";
@@ -39,7 +40,12 @@ export function useChatSession() {
     setAttachments([]);
     try {
       await streamMessage(
-        { sessionId, text, attachments: attachmentNames },
+        {
+          sessionId,
+          text,
+          attachments: attachmentNames,
+          yolo: session?.yolo ?? false,
+        },
         (event) => {
           setSession((current) => applyChatEvent(current, sessionId, event));
         },
@@ -97,6 +103,15 @@ export function useChatSession() {
     }
   }
 
+  async function setYolo(enabled: boolean) {
+    try {
+      const data = await setChatYolo(sessionId, { yolo: enabled });
+      setSession(data.session);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  }
+
   return {
     sessionId,
     input,
@@ -110,5 +125,6 @@ export function useChatSession() {
     cancel,
     approve,
     setModel,
+    setYolo,
   };
 }
