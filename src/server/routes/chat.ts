@@ -36,7 +36,9 @@ export function registerChatRoutes(
   );
 
   app.get("/api/chat/:sessionId", (req, res) => {
-    res.json({ session: deps.chats.get(routeParam(req, "sessionId")).snapshot() });
+    res.json({
+      session: deps.chats.get(routeParam(req, "sessionId")).snapshot(),
+    });
   });
 
   app.post("/api/chat/:sessionId/cancel", (req, res) => {
@@ -58,4 +60,24 @@ export function registerChatRoutes(
     }
     res.json({ session: session.snapshot() });
   });
+
+  app.post(
+    "/api/chat/:sessionId/model",
+    asyncRoute(async (req, res) => {
+      const name = String((req.body as { name?: unknown }).name ?? "").trim();
+      if (!name) {
+        res.status(400).json({ error: "Model name is required." });
+        return;
+      }
+      const session = deps.chats.get(routeParam(req, "sessionId"));
+      if (session.snapshot().running) {
+        res.status(409).json({
+          error: "Wait for the active turn to finish before switching models.",
+        });
+        return;
+      }
+      await session.setModel(name);
+      res.json({ session: session.snapshot() });
+    }),
+  );
 }

@@ -1,8 +1,5 @@
 import { TextBlock } from "@strands-agents/sdk";
-import {
-  attachmentPathsToPromptBlocks,
-  type ChannelMessage,
-} from "hoomanjs";
+import { attachmentPathsToPromptBlocks, type ChannelMessage } from "hoomanjs";
 import type { AgentWorkerInput } from "./worker.js";
 
 const MAX_ATTACHMENT_BYTES = 1024 * 1024;
@@ -24,7 +21,9 @@ export function resolveChannelUserId(
   return raw ? `${message.meta.subscription.server}:${raw}` : session;
 }
 
-export function channelOrigin(message: ChannelMessage): Record<string, unknown> {
+export function channelOrigin(
+  message: ChannelMessage,
+): Record<string, unknown> {
   return {
     server: message.meta.subscription.server,
     channel: message.meta.subscription.channel,

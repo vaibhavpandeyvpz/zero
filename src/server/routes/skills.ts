@@ -30,7 +30,9 @@ export function registerSkillsRoutes(app: Express, deps: { zero: Zero }): void {
   app.delete(
     "/api/skills/:folder",
     asyncRoute(async (req, res) => {
-      res.json({ skills: await deps.zero.removeSkill(routeParam(req, "folder")) });
+      res.json({
+        skills: await deps.zero.removeSkill(routeParam(req, "folder")),
+      });
     }),
   );
 }

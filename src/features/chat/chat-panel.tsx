@@ -34,10 +34,22 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   attachmentPreviewUrl,
@@ -60,6 +72,7 @@ export function ChatPanel(props: {
   daemon?: ChannelModeStatus;
   onSubmit: () => Promise<void>;
   onCancel: () => Promise<void>;
+  onSetModel: (name: string) => Promise<void>;
   onToggleDaemon: (enabled: boolean) => Promise<void>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
 }) {
@@ -73,45 +86,53 @@ export function ChatPanel(props: {
     <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
       <Card className="flex min-h-0 flex-col overflow-hidden pb-0">
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <CardTitle>Chat</CardTitle>
-              <CardDescription>
-                Talk to your agent. Channel messages can join the same queue.
-              </CardDescription>
-            </div>
-            <ChatStatusBlip status={props.session?.status ?? "ready"} />
-          </div>
+          <CardTitle>Chat</CardTitle>
+          <CardDescription>
+            Talk to your agent. Channel messages can join the same queue.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
-          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6">
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6"
+          >
             {lines.length === 0 ? (
               <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
                 <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
                   <SparklesIcon className="size-5" />
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Start a conversation</p>
-                  <p className="text-sm">Ask your agent to plan, research, or use connected tools.</p>
+                  <p className="font-medium text-foreground">
+                    Start a conversation
+                  </p>
+                  <p className="text-sm">
+                    Ask your agent to plan, research, or use connected tools.
+                  </p>
                 </div>
               </div>
             ) : (
               <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
                 {lines.map((line) => (
-                  <ChatBubble key={line.id} line={line} agentName={props.agentName} />
+                  <ChatBubble
+                    key={line.id}
+                    line={line}
+                    agentName={props.agentName}
+                  />
                 ))}
               </div>
             )}
           </div>
 
-          {props.session?.running && todos?.visible && todos.todos.length > 0 ? (
+          {props.session?.running &&
+          todos?.visible &&
+          todos.todos.length > 0 ? (
             <TodoPanel todos={todos.todos} />
           ) : null}
 
-          {props.session?.pendingApproval ? (
+          {props.session?.approvals ? (
             <div className="border-t bg-background/95 p-3 backdrop-blur sm:p-4">
               <ApprovalCard
-                request={props.session.pendingApproval}
+                request={props.session.approvals}
                 onApprove={props.onApprove}
               />
             </div>
@@ -125,21 +146,37 @@ export function ChatPanel(props: {
                   rows={1}
                   className="max-h-14 min-h-9 resize-none overflow-y-hidden"
                   value={props.input}
-                  placeholder={props.session?.running ? "Type a message to queue after the current turn" : "Type a message"}
+                  placeholder={
+                    props.session?.running
+                      ? "Type a message to queue after the current turn"
+                      : "Type a message"
+                  }
                   onChange={(event) => props.setInput(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey && !event.metaKey) {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.metaKey
+                    ) {
                       event.preventDefault();
                       void props.onSubmit();
                     }
                   }}
                 />
                 <Button
-                  aria-label={props.session?.running ? "Stop current turn" : props.uploadingAttachments ? "Uploading" : "Send message"}
+                  aria-label={
+                    props.session?.running
+                      ? "Stop current turn"
+                      : props.uploadingAttachments
+                        ? "Uploading"
+                        : "Send message"
+                  }
                   disabled={!props.session?.running && !canSend}
                   size="icon"
                   variant={props.session?.running ? "outline" : "default"}
-                  onClick={props.session?.running ? props.onCancel : props.onSubmit}
+                  onClick={
+                    props.session?.running ? props.onCancel : props.onSubmit
+                  }
                 >
                   {props.session?.running ? (
                     <SquareIcon className="size-4" />
@@ -161,6 +198,38 @@ export function ChatPanel(props: {
                   Channel messages share this agent queue.
                 </p>
               ) : null}
+              <div
+                className={cn(
+                  "mt-2 flex flex-wrap items-center gap-3 border-t pt-3",
+                  props.session?.models.length
+                    ? "justify-between"
+                    : "justify-end",
+                )}
+              >
+                {props.session?.models.length ? (
+                  <div className="min-w-56 flex-1">
+                    <Select
+                      value={props.session.model}
+                      disabled={props.session.running}
+                      onValueChange={(value) => void props.onSetModel(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {props.session.models.map((entry) => (
+                            <SelectItem key={entry.name} value={entry.name}>
+                              {entry.name} • {entry.provider}/{entry.model}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                <ChatStatusBlip status={props.session?.status ?? "ready"} />
+              </div>
             </div>
           </div>
         </CardContent>
@@ -169,13 +238,17 @@ export function ChatPanel(props: {
       <Card className="h-fit">
         <CardHeader>
           <CardTitle>Inputs</CardTitle>
-          <CardDescription>Channel messages join the same agent queue as chat.</CardDescription>
+          <CardDescription>
+            Channel messages join the same agent queue as chat.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium">Channels</p>
-              <p className="text-xs text-muted-foreground">Receive events from channels.</p>
+              <p className="text-xs text-muted-foreground">
+                Receive events from channels.
+              </p>
             </div>
             <Switch
               checked={props.daemon?.enabled ?? false}
@@ -183,9 +256,18 @@ export function ChatPanel(props: {
             />
           </div>
           <Separator />
-          <StatusRow label="Pending messages" value={String(props.daemon?.queued ?? 0)} />
-          <StatusRow label="Channel messages handled" value={String(props.daemon?.processed ?? 0)} />
-          <StatusRow label="Subscriptions" value={String(props.daemon?.subscriptions.length ?? 0)} />
+          <StatusRow
+            label="Pending messages"
+            value={String(props.daemon?.queued ?? 0)}
+          />
+          <StatusRow
+            label="Channel messages handled"
+            value={String(props.daemon?.processed ?? 0)}
+          />
+          <StatusRow
+            label="Subscriptions"
+            value={String(props.daemon?.subscriptions.length ?? 0)}
+          />
           {props.daemon?.lastError ? (
             <Alert variant="destructive">
               <AlertTitle>Channel error</AlertTitle>
@@ -295,7 +377,9 @@ function AttachmentPreviewList(props: {
               <span
                 className={cn(
                   "flex size-10 shrink-0 overflow-hidden rounded-md",
-                  props.variant === "user" ? "bg-primary-foreground/15" : "bg-muted",
+                  props.variant === "user"
+                    ? "bg-primary-foreground/15"
+                    : "bg-muted",
                 )}
               >
                 <img
@@ -374,18 +458,30 @@ function ChatStatusBlip({ status }: { status: string }) {
   );
 }
 
-function ChatBubble({ line, agentName }: { line: ChatLine; agentName: string }) {
+function ChatBubble({
+  line,
+  agentName,
+}: {
+  line: ChatLine;
+  agentName: string;
+}) {
   const isUser = line.role === "user";
   const isAssistant = line.role === "assistant";
   const isTool = line.role === "tool";
   const headerIcon = !isTool && !line.done;
-  const label = isTool ? "Tool" : isAssistant ? agentName : (line.toolName ?? line.title ?? line.role);
+  const label = isTool
+    ? "Tool"
+    : isAssistant
+      ? agentName
+      : (line.toolName ?? line.title ?? line.role);
   const toolName = line.toolName ?? line.title ?? "Tool";
   const userContent = isUser
     ? parseMessageAttachments(line.content)
     : { text: line.content, attachments: [] };
   return (
-    <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
+    <div
+      className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+    >
       <div
         className={cn(
           "group max-w-[88%] rounded-3xl px-4 py-3 text-sm leading-6 shadow-sm",
@@ -555,16 +651,10 @@ function FileDiffPreview({
       </summary>
       <div className="mt-2 flex flex-col gap-2">
         {display.previews?.map((preview, index) => (
-          <DiffBlock
-            key={`preview-${index}`}
-            lines={preview.split("\n")}
-          />
+          <DiffBlock key={`preview-${index}`} lines={preview.split("\n")} />
         ))}
         {display.structuredPatch?.map((hunk, index) => (
-          <DiffBlock
-            key={`hunk-${index}`}
-            lines={hunk.lines}
-          />
+          <DiffBlock key={`hunk-${index}`} lines={hunk.lines} />
         ))}
       </div>
     </details>
@@ -583,12 +673,19 @@ function TodoPanel({
           <ClipboardListIcon />
           Todos
         </CardTitle>
-        <CardDescription>Current agent task list for this turn.</CardDescription>
+        <CardDescription>
+          Current agent task list for this turn.
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         {todos.map((todo, index) => (
-          <div key={`${todo.content}-${index}`} className="flex items-start gap-2 text-sm">
-            <Badge variant={todo.status === "completed" ? "secondary" : "outline"}>
+          <div
+            key={`${todo.content}-${index}`}
+            className="flex items-start gap-2 text-sm"
+          >
+            <Badge
+              variant={todo.status === "completed" ? "secondary" : "outline"}
+            >
               {todo.status}
             </Badge>
             <div>
@@ -605,7 +702,7 @@ function TodoPanel({
 }
 
 function ApprovalCard(props: {
-  request: NonNullable<ChatSessionSnapshot["pendingApproval"]>;
+  request: NonNullable<ChatSessionSnapshot["approvals"]>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
 }) {
   return (

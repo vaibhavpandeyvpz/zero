@@ -26,7 +26,8 @@ export class ChannelMode {
   public constructor(private readonly worker: AgentWorker) {
     this.worker.onReset(() => {
       if (this.running) {
-        this.lastError = "Agent stopped. Turn channel input on again to resubscribe.";
+        this.lastError =
+          "Agent stopped. Turn channel input on again to resubscribe.";
         void this.stop();
       }
     });
@@ -68,7 +69,8 @@ export class ChannelMode {
         (message) => {
           this.lastMessageAt = new Date().toISOString();
           void this.handleMessage(message).catch((error) => {
-            this.lastError = error instanceof Error ? error.message : String(error);
+            this.lastError =
+              error instanceof Error ? error.message : String(error);
           });
         },
       );

@@ -1,4 +1,7 @@
-import { parse as parseShellCommand, quote as quoteShellCommand } from "shell-quote";
+import {
+  parse as parseShellCommand,
+  quote as quoteShellCommand,
+} from "shell-quote";
 import type { McpServerView } from "@/client/types";
 
 type McpTransportDraft = McpServerView["transport"];
@@ -66,7 +69,9 @@ export function parseMcpCommandLine(
     throw new Error("Command is required.");
   }
   if (!parsed.every((entry): entry is string => typeof entry === "string")) {
-    throw new Error("Command cannot include shell operators, redirects, comments, or globs.");
+    throw new Error(
+      "Command cannot include shell operators, redirects, comments, or globs.",
+    );
   }
 
   const [command, ...args] = parsed;
@@ -104,10 +109,13 @@ export function configErrorMessages(error: unknown): string[] {
   const rawMessage = error instanceof Error ? error.message : String(error);
   const parsed = tryParseJson(rawMessage);
   const value =
-    parsed && typeof parsed === "object" && !Array.isArray(parsed) && "error" in parsed
-      ? tryParseJson(String((parsed as { error: unknown }).error)) ??
-        String((parsed as { error: unknown }).error)
-      : parsed ?? rawMessage;
+    parsed &&
+    typeof parsed === "object" &&
+    !Array.isArray(parsed) &&
+    "error" in parsed
+      ? (tryParseJson(String((parsed as { error: unknown }).error)) ??
+        String((parsed as { error: unknown }).error))
+      : (parsed ?? rawMessage);
 
   if (Array.isArray(value)) {
     const issues = value as ValidationIssue[];

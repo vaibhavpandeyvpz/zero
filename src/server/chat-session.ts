@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
-import { TextBlock } from "@strands-agents/sdk";
+import { Message, TextBlock, type MessageData } from "@strands-agents/sdk";
 import {
   attachmentPathsToPromptBlocks,
+  bootstrap,
   getTodoViewState,
   takeFileToolDisplay,
+  type McpManager,
   type TodoViewState,
 } from "hoomanjs";
 import type {
@@ -28,6 +30,7 @@ import {
   toToolResultText,
   type StreamEvent,
 } from "./agents/chat-stream-events.js";
+import { createSessionConfig, type SessionConfig } from "./session-config.js";
 
 type QueuedPrompt = {
   id: string;
@@ -75,6 +78,9 @@ export class ChatSession {
   private running = false;
   private status = "ready";
   private yolo = false;
+  private readonly config: SessionConfig;
+  private agent: WorkerAgent | null = null;
+  private manager: McpManager | null = null;
   private assistantLineId: string | null = null;
   private activeJobId: string | null = null;
   private todos: TodoViewState | undefined;
@@ -86,7 +92,9 @@ export class ChatSession {
   public constructor(
     public readonly sessionId: string,
     private readonly worker: AgentWorker,
-  ) {}
+  ) {
+    this.config = createSessionConfig();
+  }
 
   public async stream(
     input: ChatSendRequest,
@@ -157,15 +165,48 @@ export class ChatSession {
       running: this.running,
       queued: [...this.queued],
       lines: [...this.lines],
-      pendingApproval: this.approval.pending,
+      approvals: this.approval.pending,
       status: this.status,
       todos: this.todos,
       usage: this.usage,
+      model: this.currentModel(),
+      models: this.config.llms.map((entry) => ({
+        name: entry.name,
+        provider: entry.options.provider,
+        model: entry.options.model,
+        default: entry.default,
+      })),
     };
+  }
+
+  public async setModel(name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error("Model name is required.");
+    }
+    const current = this.currentModel();
+    if (trimmed === current) {
+      return;
+    }
+    if (!this.config.llms.some((entry) => entry.name === trimmed)) {
+      throw new Error(`Unknown model "${trimmed}".`);
+    }
+    this.config.update({
+      llms: this.config.llms.map((entry) => ({
+        ...entry,
+        default: entry.name === trimmed,
+      })),
+    });
+    if (this.agent) {
+      await this.rebuildAgent();
+    }
   }
 
   public async close(): Promise<void> {
     this.queued.length = 0;
+    await this.manager?.disconnect().catch(() => undefined);
+    this.manager = null;
+    this.agent = null;
   }
 
   private async runTurn(prompt: StreamJob): Promise<void> {
@@ -175,8 +216,10 @@ export class ChatSession {
     this.assistantLineId = assistantId;
     this.activeJobId = prompt.id;
     this.activeEmit = prompt.emit;
+    const agent = await this.ensureAgent();
     await this.worker.enqueue({
       id: prompt.id,
+      agent,
       source: "chat",
       sessionId: this.sessionId,
       userId: this.sessionId,
@@ -229,6 +272,64 @@ export class ChatSession {
         this.activeEmit = null;
       },
     });
+  }
+
+  private async ensureAgent(): Promise<WorkerAgent> {
+    if (this.agent) {
+      return this.agent;
+    }
+    const {
+      agent,
+      mcp: { manager },
+    } = await bootstrap(
+      "default",
+      {
+        sessionId: this.sessionId,
+        userId: this.sessionId,
+      },
+      false,
+      this.config,
+    );
+    this.agent = agent;
+    this.manager = manager;
+    return agent;
+  }
+
+  private async rebuildAgent(): Promise<void> {
+    if (!this.agent) {
+      return;
+    }
+    const snapshot: MessageData[] = this.agent.messages.map((message) =>
+      message.toJSON(),
+    );
+    const oldManager = this.manager;
+    const {
+      agent,
+      mcp: { manager },
+    } = await bootstrap(
+      "default",
+      {
+        sessionId: this.sessionId,
+        userId: this.sessionId,
+      },
+      false,
+      this.config,
+    );
+    agent.messages.length = 0;
+    for (const message of snapshot) {
+      agent.messages.push(Message.fromJSON(message));
+    }
+    this.agent = agent;
+    this.manager = manager;
+    await oldManager?.disconnect().catch(() => undefined);
+  }
+
+  private currentModel(): string {
+    return (
+      this.config.llms.find((entry) => entry.default)?.name ??
+      this.config.llms[0]?.name ??
+      "unknown"
+    );
   }
 
   private async toStreamInput(prompt: QueuedPrompt): Promise<AgentWorkerInput> {
@@ -287,14 +388,17 @@ export class ChatSession {
       }
       case "toolResultEvent": {
         const toolUseId = getToolUseId(event.result);
-        let toolLineId = toolUseId ? this.toolLineIds.get(toolUseId) : undefined;
+        let toolLineId = toolUseId
+          ? this.toolLineIds.get(toolUseId)
+          : undefined;
         if (toolUseId) {
           this.toolLineIds.delete(toolUseId);
         }
         toolLineId ??= this.pendingToolLineIds.shift();
         if (toolLineId) {
-          const fileToolDisplay =
-            toolUseId ? takeFileToolDisplay(agent.appState, toolUseId) : undefined;
+          const fileToolDisplay = toolUseId
+            ? takeFileToolDisplay(agent.appState, toolUseId)
+            : undefined;
           this.updateLine(toolLineId, {
             phase: "done",
             done: true,
@@ -342,10 +446,10 @@ export class ChatSession {
       };
       const metrics = (event.metrics ?? {}) as { latencyMs?: number };
       this.usage = {
-        inputTokens: usage.inputTokens ?? 0,
-        outputTokens: usage.outputTokens ?? 0,
-        totalTokens: usage.totalTokens ?? 0,
-        latencyMs: metrics.latencyMs ?? 0,
+        input: usage.inputTokens ?? 0,
+        output: usage.outputTokens ?? 0,
+        total: usage.totalTokens ?? 0,
+        latency: metrics.latencyMs ?? 0,
       };
       emit({ type: "usage.updated", usage: this.usage });
     }
@@ -470,7 +574,9 @@ export class ChatSessions {
   }
 
   public async closeAll(): Promise<void> {
-    await Promise.all([...this.sessions.values()].map((session) => session.close()));
+    await Promise.all(
+      [...this.sessions.values()].map((session) => session.close()),
+    );
     this.sessions.clear();
   }
 }

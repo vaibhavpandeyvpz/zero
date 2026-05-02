@@ -17,7 +17,7 @@ import type {
 export function useZeroData(options: {
   running: boolean;
   queued: boolean;
-  pendingApproval: boolean;
+  approvals: boolean;
 }) {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [config, setConfig] = useState<ZeroConfigResponse | null>(null);
@@ -39,17 +39,20 @@ export function useZeroData(options: {
   }
 
   useEffect(() => {
-    void refreshAll().catch((error) =>
-      toast.error((error as Error).message),
-    );
+    void refreshAll().catch((error) => toast.error((error as Error).message));
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      void getHealth().then(setHealth).catch(() => undefined);
-    }, options.running || options.queued || options.pendingApproval ? 1000 : 3000);
+    const timer = setInterval(
+      () => {
+        void getHealth()
+          .then(setHealth)
+          .catch(() => undefined);
+      },
+      options.running || options.queued || options.approvals ? 1000 : 3000,
+    );
     return () => clearInterval(timer);
-  }, [options.pendingApproval, options.queued, options.running]);
+  }, [options.approvals, options.queued, options.running]);
 
   async function toggleDaemon(enabled: boolean) {
     const status = await setDaemonMode(enabled);

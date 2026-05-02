@@ -1,15 +1,8 @@
 import fastq from "fastq";
 import { BeforeToolCallEvent } from "@strands-agents/sdk";
-import {
-  TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED,
-  allowToolForSession,
-  bootstrap,
-  consumeExitRequest,
-  isToolSessionAllowed,
-  type McpManager,
-} from "hoomanjs";
-import type { ApprovalDecision } from "../client/types.js";
-import type { ApprovalController, ApprovalToolCallEvent } from "./approval.js";
+import { bootstrap, consumeExitRequest, type McpManager } from "hoomanjs";
+import { createApprovalHandler } from "./approval.js";
+import type { ApprovalController } from "./approval.js";
 
 export type WorkerAgent = Awaited<ReturnType<typeof bootstrap>>["agent"];
 export type AgentWorkerInput = Parameters<WorkerAgent["stream"]>[0];
@@ -22,6 +15,7 @@ export type AgentWorkerStatus = {
 export type AgentWorkerJob = {
   id: string;
   source: "chat" | "channel";
+  agent?: WorkerAgent;
   sessionId?: string;
   userId?: string;
   origin?: Record<string, unknown>;
@@ -37,9 +31,10 @@ export type AgentWorkerJob = {
 };
 
 export class AgentWorker {
-  private agent: WorkerAgent | null = null;
-  private manager: McpManager | null = null;
+  private defaultAgent: WorkerAgent | null = null;
+  private defaultManager: McpManager | null = null;
   private activeJob: AgentWorkerJob | null = null;
+  private activeAgent: WorkerAgent | null = null;
   private readonly resetListeners = new Set<() => void | Promise<void>>();
   private readonly queue: fastq.queueAsPromised<AgentWorkerJob, void>;
 
@@ -60,7 +55,7 @@ export class AgentWorker {
 
   public cancel(jobId: string): void {
     if (this.activeJob?.id === jobId) {
-      this.agent?.cancel();
+      this.activeAgent?.cancel();
     }
   }
 
@@ -70,8 +65,8 @@ export class AgentWorker {
   }
 
   public async getMcpManager(): Promise<McpManager> {
-    await this.ensureAgent();
-    return this.manager!;
+    await this.ensureDefaultAgent();
+    return this.defaultManager!;
   }
 
   public async close(): Promise<void> {
@@ -81,54 +76,26 @@ export class AgentWorker {
   }
 
   private async resetAgent(): Promise<void> {
-    await this.manager?.disconnect().catch(() => undefined);
-    this.manager = null;
-    this.agent = null;
+    await this.defaultManager?.disconnect().catch(() => undefined);
+    this.defaultManager = null;
+    this.defaultAgent = null;
   }
 
   private async notifyReset(): Promise<void> {
     await Promise.all([...this.resetListeners].map((listener) => listener()));
   }
 
-  private async ensureAgent(): Promise<WorkerAgent> {
-    if (this.agent) {
-      return this.agent;
+  private async ensureDefaultAgent(): Promise<WorkerAgent> {
+    if (this.defaultAgent) {
+      return this.defaultAgent;
     }
     const {
       agent,
       mcp: { manager },
     } = await bootstrap("daemon", {}, false);
-    agent.addHook(
-      BeforeToolCallEvent as never,
-      ((event: unknown) =>
-        this.handleApproval(event as ApprovalToolCallEvent)) as never,
-    );
-    this.agent = agent;
-    this.manager = manager;
+    this.defaultAgent = agent;
+    this.defaultManager = manager;
     return agent;
-  }
-
-  private async handleApproval(event: ApprovalToolCallEvent): Promise<void> {
-    const job = this.activeJob;
-    const toolName = event.toolUse.name;
-    if (
-      !job?.approval ||
-      job.yolo ||
-      TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED.has(toolName) ||
-      isToolSessionAllowed(event.agent, toolName)
-    ) {
-      return;
-    }
-
-    const decision: ApprovalDecision = await job.approval.request(event);
-    if (decision === "allow") {
-      return;
-    }
-    if (decision === "always") {
-      allowToolForSession(event.agent, toolName);
-      return;
-    }
-    event.cancel = `Tool "${toolName}" was rejected by the user.`;
   }
 
   private applyJobState(agent: WorkerAgent, job: AgentWorkerJob): void {
@@ -146,8 +113,16 @@ export class AgentWorker {
   private async run(job: AgentWorkerJob): Promise<void> {
     this.activeJob = job;
     let agent: WorkerAgent | null = null;
+    let cleanupHook: (() => void) | undefined;
     try {
-      agent = await this.ensureAgent();
+      agent = job.agent ?? (await this.ensureDefaultAgent());
+      this.activeAgent = agent;
+      cleanupHook = agent.addHook(
+        BeforeToolCallEvent as never,
+        createApprovalHandler(job.approval, {
+          yolo: () => Boolean(job.yolo),
+        }) as never,
+      );
       this.applyJobState(agent, job);
       job.onStart?.(agent);
       for await (const event of agent.stream(job.input)) {
@@ -157,9 +132,10 @@ export class AgentWorker {
     } catch (error) {
       job.onError?.(error);
     } finally {
+      cleanupHook?.();
       if (agent) {
         job.onComplete?.(agent);
-        if (consumeExitRequest(agent)) {
+        if (!job.agent && consumeExitRequest(agent)) {
           await this.resetAgent();
           await this.notifyReset();
           await job.onExit?.();
@@ -167,6 +143,9 @@ export class AgentWorker {
       }
       if (this.activeJob?.id === job.id) {
         this.activeJob = null;
+      }
+      if (this.activeAgent === agent) {
+        this.activeAgent = null;
       }
     }
   }

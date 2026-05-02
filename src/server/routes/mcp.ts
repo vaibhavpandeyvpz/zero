@@ -24,7 +24,10 @@ export function registerMcpRoutes(app: Express, deps: { zero: Zero }): void {
       return;
     }
     res.json({
-      servers: deps.zero.updateMcpServer(routeParam(req, "name"), body.transport),
+      servers: deps.zero.updateMcpServer(
+        routeParam(req, "name"),
+        body.transport,
+      ),
     });
   });
 

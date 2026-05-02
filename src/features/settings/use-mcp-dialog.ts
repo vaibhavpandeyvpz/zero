@@ -48,12 +48,18 @@ export function useMcpDialog() {
         : "",
     );
     setMcpEnvEntries(
-      server.transport.type === "stdio" ? stringMapToEntries(server.transport.env) : [],
+      server.transport.type === "stdio"
+        ? stringMapToEntries(server.transport.env)
+        : [],
     );
-    setMcpCwd(server.transport.type === "stdio" ? (server.transport.cwd ?? "") : "");
+    setMcpCwd(
+      server.transport.type === "stdio" ? (server.transport.cwd ?? "") : "",
+    );
     setMcpUrl(server.transport.type === "stdio" ? "" : server.transport.url);
     setMcpHeaderEntries(
-      server.transport.type === "stdio" ? [] : stringMapToEntries(server.transport.headers),
+      server.transport.type === "stdio"
+        ? []
+        : stringMapToEntries(server.transport.headers),
     );
     setMcpDialogOpen(true);
   }

@@ -20,7 +20,10 @@ export function createAttachmentUpload() {
     storage: multer.diskStorage({
       destination: attachmentsPath(),
       filename: (_req, file, callback) => {
-        callback(null, `${crypto.randomUUID()}${safeExtension(file.originalname)}`);
+        callback(
+          null,
+          `${crypto.randomUUID()}${safeExtension(file.originalname)}`,
+        );
       },
     }),
     limits: { fileSize: 25 * 1024 * 1024, files: 10 },

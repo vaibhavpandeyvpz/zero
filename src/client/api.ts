@@ -2,6 +2,7 @@ import type {
   ApprovalDecision,
   AttachmentUploadResponse,
   ChannelModeStatus,
+  ChatModelRequest,
   ChatSendRequest,
   ChatSessionSnapshot,
   ChatStreamEvent,
@@ -161,6 +162,19 @@ export function decideApproval(
   );
 }
 
+export function setChatModel(
+  sessionId: string,
+  body: ChatModelRequest,
+): Promise<{ session: ChatSessionSnapshot }> {
+  return request<{ session: ChatSessionSnapshot }>(
+    `/api/chat/${encodeURIComponent(sessionId)}/model`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 export function setDaemonMode(enabled: boolean): Promise<ChannelModeStatus> {
   return request<ChannelModeStatus>("/api/channels/daemon", {
     method: "POST",
@@ -172,7 +186,9 @@ export function listMcp(): Promise<{ servers: McpServerView[] }> {
   return request<{ servers: McpServerView[] }>("/api/mcp");
 }
 
-export function addMcp(body: McpUpsertRequest): Promise<{ servers: McpServerView[] }> {
+export function addMcp(
+  body: McpUpsertRequest,
+): Promise<{ servers: McpServerView[] }> {
   return request<{ servers: McpServerView[] }>("/api/mcp", {
     method: "POST",
     body: JSON.stringify(body),

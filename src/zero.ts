@@ -82,7 +82,12 @@ export class Zero {
     this.appConfig.reload();
     return {
       config: this.configData(),
-      maskedLlmParams: maskSensitiveParamsForDisplay(this.appConfig.llm.params),
+      maskedLlmParams: Object.fromEntries(
+        this.appConfig.llms.map((entry) => [
+          entry.name,
+          maskSensitiveParamsForDisplay(entry.options.params),
+        ]),
+      ),
       instructions: await this.readInstructions(),
       paths: this.paths(),
     };
@@ -117,7 +122,10 @@ export class Zero {
     return this.listMcpServers();
   }
 
-  public updateMcpServer(name: string, transport: McpTransport): McpServerView[] {
+  public updateMcpServer(
+    name: string,
+    transport: McpTransport,
+  ): McpServerView[] {
     this.mcpConfig.update(
       normalizeString(name, "MCP server name"),
       McpTransportSchema.parse(transport),
@@ -156,10 +164,16 @@ export class Zero {
   private configData(): ConfigData {
     return {
       name: this.appConfig.name,
-      llm: {
-        ...this.appConfig.llm,
-        params: parseJsonObject(this.appConfig.llm.params, "LLM params"),
-      },
+      llms: this.appConfig.llms.map((entry) => ({
+        ...entry,
+        options: {
+          ...entry.options,
+          params: parseJsonObject(
+            entry.options.params,
+            `LLM params for ${entry.name}`,
+          ),
+        },
+      })),
       search: this.appConfig.search,
       prompts: this.appConfig.prompts,
       tools: this.appConfig.tools,

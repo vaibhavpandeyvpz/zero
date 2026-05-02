@@ -12,9 +12,11 @@ export function emptySession(sessionId: string): ChatSessionSnapshot {
   return {
     sessionId,
     running: false,
+    model: "unknown",
+    models: [],
     queued: [],
     lines: [],
-    pendingApproval: null,
+    approvals: null,
     status: "ready",
   };
 }
@@ -63,15 +65,20 @@ export function applyChatEvent(
         queued: event.queued,
       };
     case "turn.started":
-      return { ...base, running: true, status: "thinking", queued: event.queued };
+      return {
+        ...base,
+        running: true,
+        status: "thinking",
+        queued: event.queued,
+      };
     case "reasoning.delta":
       return {
         ...base,
         status: "thinking",
         lines: updateLine(base.lines, event.lineId, {
           reasoningContent: `${
-            base.lines.find((line) => line.id === event.lineId)?.reasoningContent ??
-            ""
+            base.lines.find((line) => line.id === event.lineId)
+              ?.reasoningContent ?? ""
           }${event.text}`,
         }),
       };
@@ -112,16 +119,16 @@ export function applyChatEvent(
     case "usage.updated":
       return { ...base, usage: event.usage };
     case "approval.request":
-      return { ...base, pendingApproval: event.request };
+      return { ...base, approvals: event.request };
     case "approval.cleared":
-      return { ...base, pendingApproval: null };
+      return { ...base, approvals: null };
     case "turn.completed":
       return {
         ...base,
         running: false,
         queued: [],
         status: "ready",
-        pendingApproval: null,
+        approvals: null,
         todos: event.todos ?? base.todos,
         usage: event.usage ?? base.usage,
         lines: updateLine(

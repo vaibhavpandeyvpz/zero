@@ -26,11 +26,18 @@ export function registerAttachmentRoutes(
     },
   );
 
-  app.get("/api/attachments/:name/thumbnail", (req: Request, res: Response, next: NextFunction) => {
-    const name = safeAttachmentName(routeParam(req, "name"));
-    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
-    res.sendFile(name, { root: attachmentsPath(), dotfiles: "deny" }, (error) => {
-      if (error) next(error);
-    });
-  });
+  app.get(
+    "/api/attachments/:name/thumbnail",
+    (req: Request, res: Response, next: NextFunction) => {
+      const name = safeAttachmentName(routeParam(req, "name"));
+      res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+      res.sendFile(
+        name,
+        { root: attachmentsPath(), dotfiles: "deny" },
+        (error) => {
+          if (error) next(error);
+        },
+      );
+    },
+  );
 }

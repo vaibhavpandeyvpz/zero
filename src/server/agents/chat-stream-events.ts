@@ -7,7 +7,12 @@ export type StreamEvent = {
   type?: string;
   contentBlock?: unknown;
   result?: unknown;
-  event?: { type?: string; usage?: unknown; metrics?: unknown; delta?: ModelDelta };
+  event?: {
+    type?: string;
+    usage?: unknown;
+    metrics?: unknown;
+    delta?: ModelDelta;
+  };
 };
 
 export function stringifyUnknown(value: unknown): string {

@@ -1,15 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   cancelChat,
   decideApproval,
+  getChatSession,
+  setChatModel,
   streamMessage,
   uploadAttachments,
 } from "@/client/api";
-import type {
-  ChatSessionSnapshot,
-  UploadedAttachment,
-} from "@/client/types";
+import type { ChatSessionSnapshot, UploadedAttachment } from "@/client/types";
 import { applyChatEvent, newSessionId } from "./session-state";
 
 export function useChatSession() {
@@ -18,6 +17,14 @@ export function useChatSession() {
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [session, setSession] = useState<ChatSessionSnapshot | null>(null);
+
+  useEffect(() => {
+    void getChatSession(sessionId)
+      .then((data) => setSession(data.session))
+      .catch((error) => {
+        toast.error((error as Error).message);
+      });
+  }, [sessionId]);
 
   async function submitMessage() {
     const text = input.trim();
@@ -31,9 +38,12 @@ export function useChatSession() {
     setInput("");
     setAttachments([]);
     try {
-      await streamMessage({ sessionId, text, attachments: attachmentNames }, (event) => {
-        setSession((current) => applyChatEvent(current, sessionId, event));
-      });
+      await streamMessage(
+        { sessionId, text, attachments: attachmentNames },
+        (event) => {
+          setSession((current) => applyChatEvent(current, sessionId, event));
+        },
+      );
     } catch (error) {
       setInput(text);
       setAttachments(previous);
@@ -78,6 +88,15 @@ export function useChatSession() {
     }
   }
 
+  async function setModel(name: string) {
+    try {
+      const data = await setChatModel(sessionId, { name });
+      setSession(data.session);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  }
+
   return {
     sessionId,
     input,
@@ -90,5 +109,6 @@ export function useChatSession() {
     removeAttachment,
     cancel,
     approve,
+    setModel,
   };
 }

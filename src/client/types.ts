@@ -83,16 +83,23 @@ export type ApprovalRequest = {
 export type ChatSessionSnapshot = {
   sessionId: string;
   running: boolean;
+  model: string;
+  models: Array<{
+    name: string;
+    provider: string;
+    model: string;
+    default: boolean;
+  }>;
   queued: Array<{ id: string; text: string; attachments: string[] }>;
   lines: ChatLine[];
-  pendingApproval: ApprovalRequest | null;
+  approvals: ApprovalRequest | null;
   status: string;
   todos?: TodoViewState;
   usage?: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    latencyMs: number;
+    input: number;
+    output: number;
+    total: number;
+    latency: number;
   };
 };
 
@@ -116,6 +123,10 @@ export type AttachmentUploadResponse = {
 
 export type ChatSendResponse = {
   session: ChatSessionSnapshot;
+};
+
+export type ChatModelRequest = {
+  name: string;
 };
 
 export type ApprovalDecision = "allow" | "always" | "deny";

@@ -70,12 +70,13 @@ export class ApprovalController {
 }
 
 export function createApprovalHandler(
-  controller: ApprovalController,
+  controller: ApprovalController | null | undefined,
   options: { yolo: () => boolean },
 ): (event: ApprovalToolCallEvent) => Promise<void> {
   return async (event: ApprovalToolCallEvent) => {
     const toolName = event.toolUse.name;
     if (
+      !controller ||
       options.yolo() ||
       TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED.has(toolName) ||
       isToolSessionAllowed(event.agent, toolName)

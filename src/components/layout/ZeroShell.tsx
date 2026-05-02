@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   BotIcon,
   CheckIcon,
@@ -49,7 +49,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldContent,
+  FieldGroup,
+  FieldLabel,
+  FieldSeparator,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -86,16 +93,17 @@ import { useChatSession } from "@/features/chat/use-chat-session";
 
 export function ZeroShell() {
   const [activeTab, setActiveTab] = useState("chat");
-  const [skillResults, setSkillResults] =
-    useState<SkillSearchResponse["results"]>([]);
+  const [skillResults, setSkillResults] = useState<
+    SkillSearchResponse["results"]
+  >([]);
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
   const chat = useChatSession();
 
   const running = chat.session?.running ?? false;
   const queued = (chat.session?.queued.length ?? 0) > 0;
-  const pendingApproval = Boolean(chat.session?.pendingApproval);
-  const data = useZeroData({ running, queued, pendingApproval });
+  const approvals = Boolean(chat.session?.approvals);
+  const data = useZeroData({ running, queued, approvals });
   const daemon = data.health?.daemonStatus;
 
   useEffect(() => {
@@ -103,7 +111,11 @@ export function ZeroShell() {
   }, []);
 
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-screen flex-col">
+    <Tabs
+      value={activeTab}
+      onValueChange={setActiveTab}
+      className="flex min-h-screen flex-col"
+    >
       <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
         <div className="mx-auto grid w-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -149,11 +161,7 @@ export function ZeroShell() {
               size="sm"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
-              {mounted && theme === "dark" ? (
-                <SunIcon />
-              ) : (
-                <MoonIcon />
-              )}
+              {mounted && theme === "dark" ? <SunIcon /> : <MoonIcon />}
               Theme
             </Button>
           </div>
@@ -161,7 +169,10 @@ export function ZeroShell() {
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-4">
-        <TabsContent value="chat" className="mt-0 flex h-[calc(100vh-6rem)] min-h-0 flex-col gap-4">
+        <TabsContent
+          value="chat"
+          className="mt-0 flex h-[calc(100vh-6rem)] min-h-0 flex-col gap-4"
+        >
           <ChatPanel
             session={chat.session}
             agentName={data.config?.config.name ?? "Agent"}
@@ -174,6 +185,7 @@ export function ZeroShell() {
             daemon={daemon}
             onSubmit={chat.submitMessage}
             onCancel={chat.cancel}
+            onSetModel={chat.setModel}
             onToggleDaemon={data.toggleDaemon}
             onApprove={chat.approve}
           />
@@ -212,18 +224,27 @@ function SettingsPanel(props: {
   setSkillResults: (results: SkillSearchResponse["results"]) => void;
   refreshAll: () => Promise<void>;
 }) {
+  const defaultSessionsCheckboxId = useId();
   const {
     configDraft,
     configErrors,
     instructions,
     llmParamsText,
+    selectedLlmName,
+    selectedLlm,
     providers,
     setConfigErrors,
     setInstructions,
-    setLlmParamsText,
+    setSelectedLlmName,
+    setCurrentLlmParamsText,
     updateDraft,
     updateToolToggle,
-    parseLlmParams,
+    patchSelectedLlm,
+    parseAllLlmParams,
+    addLlm,
+    removeSelectedLlm,
+    renameSelectedLlm,
+    setDefaultLlm,
   } = useConfigDraft(props.config);
   const mcpDialog = useMcpDialog();
   const skillsFlow = useSkillInstallFlow({
@@ -290,7 +311,9 @@ function SettingsPanel(props: {
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle>Agent configuration</CardTitle>
-          <CardDescription>Web version of the core configure screen.</CardDescription>
+          <CardDescription>
+            Web version of the core configure screen.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {configDraft ? (
@@ -314,7 +337,10 @@ function SettingsPanel(props: {
                   <Input
                     value={configDraft.name}
                     onChange={(event) =>
-                      updateDraft((draft) => ({ ...draft, name: event.target.value }))
+                      updateDraft((draft) => ({
+                        ...draft,
+                        name: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -328,53 +354,161 @@ function SettingsPanel(props: {
               </TabsContent>
 
               <TabsContent value="llm" className="mt-0 flex flex-col gap-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Field>
-                    <FieldLabel>Provider</FieldLabel>
-                  <Select
-                    value={configDraft.llm.provider}
-                    onValueChange={(value) =>
-                      updateDraft((draft) => ({
-                        ...draft,
-                        llm: { ...draft.llm, provider: value as never },
-                      }))
-                    }
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field className="min-w-64 flex-1">
+                    <FieldLabel>Named LLM</FieldLabel>
+                    <Select
+                      value={selectedLlmName}
+                      onValueChange={setSelectedLlmName}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose an LLM" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {configDraft.llms.map((entry) => (
+                            <SelectItem key={entry.name} value={entry.name}>
+                              {entry.name}
+                              {entry.default ? " • default" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Button type="button" variant="outline" onClick={addLlm}>
+                    <PlusIcon />
+                    Add
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!selectedLlm || configDraft.llms.length <= 1}
+                    onClick={removeSelectedLlm}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {providers.map((item) => (
-                          <SelectItem key={item} value={item}>
-                            {LLM_PROVIDER_LABELS[item]}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel>Model</FieldLabel>
-                  <Input
-                    value={configDraft.llm.model}
-                    onChange={(event) =>
-                        updateDraft((draft) => ({
-                          ...draft,
-                        llm: { ...draft.llm, model: event.target.value },
-                        }))
-                    }
-                  />
-                </Field>
+                    Remove
+                  </Button>
                 </div>
-                <Field>
-                  <FieldLabel>LLM params</FieldLabel>
-                  <Textarea
-                    className="font-mono"
-                    value={llmParamsText}
-                    onChange={(event) => setLlmParamsText(event.target.value)}
-                  />
-                </Field>
+                {selectedLlm ? (
+                  <>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <Field>
+                        <FieldLabel>Name</FieldLabel>
+                        <Input
+                          value={selectedLlm.name}
+                          onChange={(event) => {
+                            try {
+                              renameSelectedLlm(event.target.value);
+                            } catch (error) {
+                              setConfigErrors([(error as Error).message]);
+                            }
+                          }}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Provider</FieldLabel>
+                        <Select
+                          value={selectedLlm.options.provider}
+                          onValueChange={(value) =>
+                            patchSelectedLlm((entry) => ({
+                              ...entry,
+                              options: {
+                                ...entry.options,
+                                provider: value as never,
+                              },
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Provider" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {providers.map((item) => (
+                                <SelectItem key={item} value={item}>
+                                  {LLM_PROVIDER_LABELS[item]}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field>
+                        <FieldLabel>Model</FieldLabel>
+                        <Input
+                          value={selectedLlm.options.model}
+                          onChange={(event) =>
+                            patchSelectedLlm((entry) => ({
+                              ...entry,
+                              options: {
+                                ...entry.options,
+                                model: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <Field>
+                      <FieldLabel>LLM params</FieldLabel>
+                      <Textarea
+                        className="min-h-32 font-mono"
+                        value={llmParamsText[selectedLlm.name] ?? "{}"}
+                        onChange={(event) =>
+                          setCurrentLlmParamsText(event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field
+                      orientation="horizontal"
+                      data-disabled={
+                        configDraft.llms.length <= 1 ? true : undefined
+                      }
+                    >
+                      <Checkbox
+                        id={defaultSessionsCheckboxId}
+                        checked={Boolean(
+                          configDraft.llms.find(
+                            (entry) => entry.name === selectedLlmName,
+                          )?.default,
+                        )}
+                        disabled={configDraft.llms.length <= 1}
+                        onCheckedChange={(checked) => {
+                          const row = configDraft.llms.find(
+                            (entry) => entry.name === selectedLlmName,
+                          );
+                          if (!row) return;
+                          if (checked === true) {
+                            if (!row.default) {
+                              setDefaultLlm(row.name);
+                            }
+                            return;
+                          }
+                          if (
+                            checked === false &&
+                            row.default &&
+                            configDraft.llms.length > 1
+                          ) {
+                            const other = configDraft.llms.find(
+                              (entry) => entry.name !== row.name,
+                            );
+                            if (other) {
+                              setDefaultLlm(other.name);
+                            }
+                          }
+                        }}
+                      />
+                      <FieldContent>
+                        <FieldLabel
+                          htmlFor={defaultSessionsCheckboxId}
+                          className="font-normal"
+                        >
+                          Default for new sessions
+                        </FieldLabel>
+                      </FieldContent>
+                    </Field>
+                  </>
+                ) : null}
               </TabsContent>
 
               <TabsContent value="search" className="mt-0 flex flex-col gap-4">
@@ -409,29 +543,37 @@ function SettingsPanel(props: {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {(["brave", "serper", "tavily"] as const).map((item) => (
-                              <SelectItem key={item} value={item}>
-                                {SEARCH_PROVIDER_LABELS[item]}
-                              </SelectItem>
-                            ))}
+                            {(["brave", "serper", "tavily"] as const).map(
+                              (item) => (
+                                <SelectItem key={item} value={item}>
+                                  {SEARCH_PROVIDER_LABELS[item]}
+                                </SelectItem>
+                              ),
+                            )}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
                     </Field>
                     <Field>
                       <FieldLabel>
-                        {SEARCH_PROVIDER_LABELS[configDraft.search.provider]} API key
+                        {SEARCH_PROVIDER_LABELS[configDraft.search.provider]}{" "}
+                        API key
                       </FieldLabel>
                       <Input
                         type="password"
-                        value={configDraft.search[configDraft.search.provider].apiKey ?? ""}
+                        value={
+                          configDraft.search[configDraft.search.provider]
+                            .apiKey ?? ""
+                        }
                         onChange={(event) => {
                           const providerName = configDraft.search.provider;
                           updateDraft((draft) => ({
                             ...draft,
                             search: {
                               ...draft.search,
-                              [providerName]: { apiKey: event.target.value || undefined },
+                              [providerName]: {
+                                apiKey: event.target.value || undefined,
+                              },
                             },
                           }));
                         }}
@@ -442,7 +584,15 @@ function SettingsPanel(props: {
               </TabsContent>
 
               <TabsContent value="prompts" className="mt-0 grid gap-3">
-                {(["behaviour", "communication", "execution", "engineering", "guardrails"] as const).map((prompt) => (
+                {(
+                  [
+                    "behaviour",
+                    "communication",
+                    "execution",
+                    "engineering",
+                    "guardrails",
+                  ] as const
+                ).map((prompt) => (
                   <ToggleRow
                     key={prompt}
                     label={PROMPT_LABELS[prompt]}
@@ -458,12 +608,16 @@ function SettingsPanel(props: {
               </TabsContent>
 
               <TabsContent value="tools" className="mt-0 grid gap-3">
-                {(["todo", "fetch", "filesystem", "shell", "sleep"] as const).map((tool) => (
+                {(
+                  ["todo", "fetch", "filesystem", "shell", "sleep"] as const
+                ).map((tool) => (
                   <ToggleRow
                     key={tool}
                     label={TOOL_LABELS[tool]}
                     checked={configDraft.tools[tool].enabled}
-                    onCheckedChange={(enabled) => updateToolToggle(tool, enabled)}
+                    onCheckedChange={(enabled) =>
+                      updateToolToggle(tool, enabled)
+                    }
                   />
                 ))}
               </TabsContent>
@@ -495,7 +649,10 @@ function SettingsPanel(props: {
                               ...draft.tools,
                               ltm: {
                                 ...draft.tools.ltm,
-                                chroma: { ...draft.tools.ltm.chroma, url: event.target.value },
+                                chroma: {
+                                  ...draft.tools.ltm.chroma,
+                                  url: event.target.value,
+                                },
                               },
                             },
                           }))
@@ -551,7 +708,10 @@ function SettingsPanel(props: {
                               ...draft.tools,
                               wiki: {
                                 ...draft.tools.wiki,
-                                chroma: { ...draft.tools.wiki.chroma, url: event.target.value },
+                                chroma: {
+                                  ...draft.tools.wiki.chroma,
+                                  url: event.target.value,
+                                },
                               },
                             },
                           }))
@@ -619,7 +779,10 @@ function SettingsPanel(props: {
                 </Field>
               </TabsContent>
 
-              <TabsContent value="compaction" className="mt-0 grid gap-3 md:grid-cols-2">
+              <TabsContent
+                value="compaction"
+                className="mt-0 grid gap-3 md:grid-cols-2"
+              >
                 <Field>
                   <FieldLabel>Ratio</FieldLabel>
                   <Input
@@ -679,13 +842,13 @@ function SettingsPanel(props: {
                   props.setBusy(true);
                   setConfigErrors([]);
                   try {
-                  if (!configDraft) return;
-                  const updated = await saveConfig({
-                    ...configDraft,
-                    llm: { ...configDraft.llm, params: parseLlmParams() },
-                    instructions,
-                  });
-                  props.setConfig(updated);
+                    if (!configDraft) return;
+                    const updated = await saveConfig({
+                      ...configDraft,
+                      llms: parseAllLlmParams(),
+                      instructions,
+                    });
+                    props.setConfig(updated);
                     toast.success("Configuration saved.");
                   } catch (error) {
                     setConfigErrors(configErrorMessages(error));
@@ -709,7 +872,8 @@ function SettingsPanel(props: {
                 <DialogHeader>
                   <DialogTitle>Restart agent?</DialogTitle>
                   <DialogDescription>
-                    This will restart the agent. Active chat turns may be interrupted.
+                    This will restart the agent. Active chat turns may be
+                    interrupted.
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
@@ -753,7 +917,10 @@ function SettingsPanel(props: {
           <div className="flex flex-col gap-2">
             {props.mcp.length > 0 ? (
               props.mcp.map((server) => (
-                <div key={server.name} className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div
+                  key={server.name}
+                  className="flex items-center justify-between gap-3 rounded-md border p-3"
+                >
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium">{server.name}</p>
@@ -761,7 +928,9 @@ function SettingsPanel(props: {
                         {MCP_CONNECTION_LABELS[server.transport.type]}
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">{server.summary}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {server.summary}
+                    </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button
@@ -848,7 +1017,9 @@ function SettingsPanel(props: {
                     <FieldLabel>Connection type</FieldLabel>
                     <Select
                       value={mcpType}
-                      onValueChange={(value) => setMcpType(value as McpTransportType)}
+                      onValueChange={(value) =>
+                        setMcpType(value as McpTransportType)
+                      }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Connection type" />
@@ -856,7 +1027,9 @@ function SettingsPanel(props: {
                       <SelectContent>
                         <SelectGroup>
                           <SelectItem value="stdio">Local command</SelectItem>
-                          <SelectItem value="streamable-http">Remote server</SelectItem>
+                          <SelectItem value="streamable-http">
+                            Remote server
+                          </SelectItem>
                           <SelectItem value="sse">Event stream</SelectItem>
                         </SelectGroup>
                       </SelectContent>
@@ -914,20 +1087,27 @@ function SettingsPanel(props: {
               </div>
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button type="button" variant="outline">Cancel</Button>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
                 </DialogClose>
                 <Button
                   disabled={props.busy}
                   onClick={() =>
-                    void runTask(async () => {
-                      const transport = buildMcpTransport();
-                      const data = mcpEditingName
-                        ? await updateMcp(mcpEditingName, { transport })
-                        : await addMcp({ name: mcpName, transport });
-                      props.setMcp(data.servers);
-                      setMcpDialogOpen(false);
-                      resetMcpForm();
-                    }, mcpEditingName ? "MCP server updated." : "MCP server added.")
+                    void runTask(
+                      async () => {
+                        const transport = buildMcpTransport();
+                        const data = mcpEditingName
+                          ? await updateMcp(mcpEditingName, { transport })
+                          : await addMcp({ name: mcpName, transport });
+                        props.setMcp(data.servers);
+                        setMcpDialogOpen(false);
+                        resetMcpForm();
+                      },
+                      mcpEditingName
+                        ? "MCP server updated."
+                        : "MCP server added.",
+                    )
                   }
                 >
                   {mcpEditingName ? "Save server" : "Add server"}
@@ -945,27 +1125,33 @@ function SettingsPanel(props: {
               <DialogHeader>
                 <DialogTitle>Install skill?</DialogTitle>
                 <DialogDescription>
-                  Add {skillInstallCandidate?.name ?? "this skill"} to the agent.
+                  Add {skillInstallCandidate?.name ?? "this skill"} to the
+                  agent.
                 </DialogDescription>
               </DialogHeader>
               {skillInstallCandidate ? (
                 <div className="rounded-md border bg-muted/20 p-3 text-sm">
                   <p className="font-medium">{skillInstallCandidate.name}</p>
                   <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                    {skillInstallCandidate.details ?? skillInstallCandidate.source}
+                    {skillInstallCandidate.details ??
+                      skillInstallCandidate.source}
                   </p>
                 </div>
               ) : null}
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button type="button" variant="outline">Cancel</Button>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
                 </DialogClose>
                 <Button
                   disabled={props.busy || !skillInstallCandidate}
                   onClick={() =>
                     void runTask(async () => {
                       if (!skillInstallCandidate) return;
-                      const data = await installSkill(skillInstallCandidate.source);
+                      const data = await installSkill(
+                        skillInstallCandidate.source,
+                      );
                       props.setSkills(data.skills);
                       clearSkillInstallState();
                     }, "Skill installed.")
@@ -984,7 +1170,9 @@ function SettingsPanel(props: {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle>Skills</CardTitle>
-              <CardDescription>Add reusable skills for the agent.</CardDescription>
+              <CardDescription>
+                Add reusable skills for the agent.
+              </CardDescription>
             </div>
             <Button
               type="button"
@@ -1001,10 +1189,17 @@ function SettingsPanel(props: {
           <div className="flex flex-col gap-2">
             {props.skills.length > 0 ? (
               props.skills.map((skill) => (
-                <div key={skill.path} className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div
+                  key={skill.path}
+                  className="flex items-center justify-between gap-3 rounded-md border p-3"
+                >
                   <div>
                     <p className="text-sm font-medium">{skill.name}</p>
-                    {skill.description ? <p className="text-xs text-muted-foreground">{skill.description}</p> : null}
+                    {skill.description ? (
+                      <p className="text-xs text-muted-foreground">
+                        {skill.description}
+                      </p>
+                    ) : null}
                   </div>
                   <Dialog>
                     <DialogTrigger asChild>
@@ -1028,7 +1223,9 @@ function SettingsPanel(props: {
                             variant="destructive"
                             onClick={() =>
                               void runTask(async () => {
-                                const data = await removeSkill(skillFolder(skill.path));
+                                const data = await removeSkill(
+                                  skillFolder(skill.path),
+                                );
                                 props.setSkills(data.skills);
                               }, "Skill removed.")
                             }
@@ -1081,10 +1278,7 @@ function SettingsPanel(props: {
                         value={skillQuery}
                         onChange={(event) => setSkillQuery(event.target.value)}
                       />
-                      <Button
-                        type="submit"
-                        variant="outline"
-                      >
+                      <Button type="submit" variant="outline">
                         Search
                       </Button>
                     </div>
@@ -1142,11 +1336,7 @@ function SettingsPanel(props: {
                       value={skillSource}
                       onChange={(event) => setSkillSource(event.target.value)}
                     />
-                    <Button
-                      type="submit"
-                    >
-                      Install
-                    </Button>
+                    <Button type="submit">Install</Button>
                   </div>
                 </form>
               </div>
