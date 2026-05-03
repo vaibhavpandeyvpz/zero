@@ -13,6 +13,7 @@ export function emptySession(sessionId: string): ChatSessionSnapshot {
     sessionId,
     running: false,
     yolo: false,
+    sessionMode: "default",
     model: "unknown",
     models: [],
     queued: [],

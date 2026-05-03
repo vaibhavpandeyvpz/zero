@@ -1,6 +1,11 @@
 import fastq from "fastq";
 import { BeforeToolCallEvent } from "@strands-agents/sdk";
-import { bootstrap, consumeExitRequest, type McpManager } from "hoomanjs";
+import {
+  bootstrap,
+  consumeExitRequest,
+  setYoloEnabled,
+  type McpManager,
+} from "hoomanjs";
 import { createApprovalHandler } from "./approval.js";
 import type { ApprovalController } from "./approval.js";
 
@@ -124,6 +129,9 @@ export class AgentWorker {
     if (job.origin) {
       agent.appState.set("origin", job.origin);
     }
+    if (job.yolo !== undefined) {
+      setYoloEnabled(agent, Boolean(job.yolo));
+    }
   }
 
   private async run(job: AgentWorkerJob): Promise<void> {
@@ -135,9 +143,7 @@ export class AgentWorker {
       this.activeAgent = agent;
       cleanupHook = agent.addHook(
         BeforeToolCallEvent as never,
-        createApprovalHandler(job.approval, {
-          yolo: () => Boolean(job.yolo),
-        }) as never,
+        createApprovalHandler(job.approval) as never,
       );
       this.applyJobState(agent, job);
       job.onStart?.(agent);

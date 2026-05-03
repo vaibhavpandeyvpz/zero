@@ -4,6 +4,7 @@ import type {
   ChannelModeStatus,
   ChatModelRequest,
   ChatSendRequest,
+  ChatSessionMode,
   ChatSessionSnapshot,
   ChatStreamEvent,
   HealthResponse,
@@ -181,6 +182,19 @@ export function setChatYolo(
 ): Promise<{ session: ChatSessionSnapshot }> {
   return request<{ session: ChatSessionSnapshot }>(
     `/api/chat/${encodeURIComponent(sessionId)}/yolo`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export function setChatSessionMode(
+  sessionId: string,
+  body: { mode: ChatSessionMode },
+): Promise<{ session: ChatSessionSnapshot }> {
+  return request<{ session: ChatSessionSnapshot }>(
+    `/api/chat/${encodeURIComponent(sessionId)}/session-mode`,
     {
       method: "POST",
       body: JSON.stringify(body),

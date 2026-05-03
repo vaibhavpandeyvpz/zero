@@ -20,6 +20,7 @@ import remarkGfm from "remark-gfm";
 import type {
   ChannelModeStatus,
   ChatLine,
+  ChatSessionMode,
   ChatSessionSnapshot,
   UploadedAttachment,
 } from "@/client/types";
@@ -71,6 +72,16 @@ function formatProviderModel(provider: string, model: string): string {
   return `\u2026${combined.slice(-PROVIDER_MODEL_TAIL_MAX)}`;
 }
 
+const MODE_SELECT_LABELS: Record<ChatSessionMode, string> = {
+  default: "Default",
+  plan: "Plan",
+  ask: "Ask",
+};
+
+function modeSelectTriggerLabel(mode: ChatSessionMode): string {
+  return `Mode · ${MODE_SELECT_LABELS[mode]}`;
+}
+
 function modelSelectTriggerLabel(
   models: ChatSessionSnapshot["models"],
   currentName: string,
@@ -94,6 +105,8 @@ export function ChatPanel(props: {
   onSubmit: () => Promise<void>;
   onCancel: () => Promise<void>;
   onSetModel: (name: string) => Promise<void>;
+  sessionMode: ChatSessionMode;
+  onSetSessionMode: (mode: ChatSessionMode) => Promise<void>;
   yolo: boolean;
   onSetYolo: (enabled: boolean) => Promise<void>;
   onToggleDaemon: (enabled: boolean) => Promise<void>;
@@ -251,6 +264,26 @@ export function ChatPanel(props: {
                     </SelectContent>
                   </Select>
                 ) : null}
+                <Select
+                  value={props.sessionMode}
+                  disabled={!props.session || props.session.running}
+                  onValueChange={(value) =>
+                    void props.onSetSessionMode(value as ChatSessionMode)
+                  }
+                >
+                  <SelectTrigger className="min-w-[9rem]">
+                    <SelectValue placeholder="Mode">
+                      {modeSelectTriggerLabel(props.sessionMode)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="default">Default</SelectItem>
+                      <SelectItem value="plan">Plan</SelectItem>
+                      <SelectItem value="ask">Ask</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
                 <Select
                   value={props.yolo ? "on" : "off"}
                   disabled={!props.session || props.session.running}

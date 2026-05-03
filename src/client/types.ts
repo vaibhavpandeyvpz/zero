@@ -82,11 +82,16 @@ export type ApprovalRequest = {
   inputPreview: string;
 };
 
+/** Session tool surface for web chat (matches Hooman session modes). */
+export type ChatSessionMode = "default" | "plan" | "ask";
+
 export type ChatSessionSnapshot = {
   sessionId: string;
   running: boolean;
   /** Auto-approve tools for this session; also updates channel/daemon preference when changed. */
   yolo: boolean;
+  /** Default, plan (narrow + plan tools), or ask (narrow, no plan lifecycle tools). */
+  sessionMode: ChatSessionMode;
   model: string;
   models: Array<{
     name: string;

@@ -3,17 +3,23 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Message, TextBlock, type MessageData } from "@strands-agents/sdk";
 import {
+  applySessionMode,
   attachmentPathsToPromptBlocks,
   bootstrap,
+  getModeState,
   getTodoViewState,
+  setSessionMode as applyAgentSessionMode,
+  setYoloEnabled,
   takeFileToolDisplay,
   type McpManager,
+  type SessionMode,
   type TodoViewState,
 } from "hoomanjs";
 import type {
   ApprovalDecision,
   ChatLine,
   ChatSendRequest,
+  ChatSessionMode,
   ChatSessionSnapshot,
   ChatStreamEvent,
 } from "../client/types.js";
@@ -78,6 +84,8 @@ export class ChatSession {
   private running = false;
   private status = "ready";
   private yolo = false;
+  /** UI preference before an agent exists; once live, snapshot prefers {@link getModeState}. */
+  private preferredSessionMode: ChatSessionMode = "default";
   private readonly config: SessionConfig;
   private agent: WorkerAgent | null = null;
   private manager: McpManager | null = null;
@@ -163,10 +171,15 @@ export class ChatSession {
   }
 
   public snapshot(): ChatSessionSnapshot {
+    const sessionMode: ChatSessionMode =
+      this.agent != null
+        ? (getModeState(this.agent).mode as ChatSessionMode)
+        : this.preferredSessionMode;
     return {
       sessionId: this.sessionId,
       running: this.running,
       yolo: this.yolo,
+      sessionMode,
       queued: [...this.queued],
       lines: [...this.lines],
       approvals: this.approval.pending,
@@ -186,6 +199,23 @@ export class ChatSession {
   public setYolo(enabled: boolean): void {
     this.yolo = enabled;
     this.worker.setDefaultYolo(enabled);
+    if (this.agent) {
+      setYoloEnabled(this.agent, enabled);
+    }
+  }
+
+  public setSessionMode(mode: ChatSessionMode): void {
+    this.preferredSessionMode = mode;
+    if (this.agent) {
+      applyAgentSessionMode(this.agent, mode as SessionMode);
+      applySessionMode(this.agent);
+    }
+  }
+
+  private syncAgentPreferences(agent: WorkerAgent): void {
+    setYoloEnabled(agent, this.yolo);
+    applyAgentSessionMode(agent, this.preferredSessionMode as SessionMode);
+    applySessionMode(agent);
   }
 
   public async setModel(name: string): Promise<void> {
@@ -231,6 +261,7 @@ export class ChatSession {
     this.activeJobId = prompt.id;
     this.activeEmit = prompt.emit;
     const agent = await this.ensureAgent();
+    this.syncAgentPreferences(agent);
     await this.worker.enqueue({
       id: prompt.id,
       agent,
@@ -300,6 +331,8 @@ export class ChatSession {
       {
         sessionId: this.sessionId,
         userId: this.sessionId,
+        yolo: this.yolo,
+        sessionMode: this.preferredSessionMode as SessionMode,
       },
       false,
       this.config,
@@ -325,13 +358,16 @@ export class ChatSession {
       {
         sessionId: this.sessionId,
         userId: this.sessionId,
+        yolo: this.yolo,
+        sessionMode: this.preferredSessionMode as SessionMode,
       },
       false,
       this.config,
     );
     agent.messages.length = 0;
     for (const message of snapshot) {
-      agent.messages.push(Message.fromJSON(message));
+      // Strands `Message` types differ when Zero and hoomanjs resolve duplicate `@strands-agents/sdk` installs.
+      agent.messages.push(Message.fromJSON(message) as never);
     }
     this.agent = agent;
     this.manager = manager;

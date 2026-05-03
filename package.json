@@ -47,7 +47,7 @@
     "commander": "^14.0.3",
     "express": "^5.2.1",
     "fastq": "^1.20.1",
-    "hoomanjs": "^1.22.2",
+    "hoomanjs": "^1.23.3",
     "lucide-react": "^0.553.0",
     "multer": "^2.1.1",
     "next": "^16.0.10",
@@ -80,5 +80,10 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "overrides": {
+    "hoomanjs": {
+      "@strands-agents/sdk": "$@strands-agents/sdk"
+    }
   }
 }

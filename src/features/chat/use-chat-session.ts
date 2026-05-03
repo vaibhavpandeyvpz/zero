@@ -5,11 +5,16 @@ import {
   decideApproval,
   getChatSession,
   setChatModel,
+  setChatSessionMode,
   setChatYolo,
   streamMessage,
   uploadAttachments,
 } from "@/client/api";
-import type { ChatSessionSnapshot, UploadedAttachment } from "@/client/types";
+import type {
+  ChatSessionMode,
+  ChatSessionSnapshot,
+  UploadedAttachment,
+} from "@/client/types";
 import { applyChatEvent, newSessionId } from "./session-state";
 
 export function useChatSession() {
@@ -112,6 +117,15 @@ export function useChatSession() {
     }
   }
 
+  async function setSessionMode(mode: ChatSessionMode) {
+    try {
+      const data = await setChatSessionMode(sessionId, { mode });
+      setSession(data.session);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  }
+
   return {
     sessionId,
     input,
@@ -126,5 +140,6 @@ export function useChatSession() {
     approve,
     setModel,
     setYolo,
+    setSessionMode,
   };
 }

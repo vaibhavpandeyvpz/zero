@@ -1,5 +1,9 @@
 import type { Express } from "express";
-import type { ApprovalDecision, ChatSendRequest } from "../../client/types.js";
+import type {
+  ApprovalDecision,
+  ChatSendRequest,
+  ChatSessionMode,
+} from "../../client/types.js";
 import type { ChatSessions } from "../agents/chat-session.js";
 import { writeNdjson } from "../http/ndjson.js";
 import { routeParam } from "../http/route-param.js";
@@ -89,6 +93,26 @@ export function registerChatRoutes(
     }
     const session = deps.chats.get(routeParam(req, "sessionId"));
     session.setYolo(body.yolo);
+    res.json({ session: session.snapshot() });
+  });
+
+  app.post("/api/chat/:sessionId/session-mode", (req, res) => {
+    const mode = (req.body as { mode?: unknown }).mode;
+    if (mode !== "default" && mode !== "plan" && mode !== "ask") {
+      res.status(400).json({
+        error: 'Body must include "mode": "default", "plan", or "ask".',
+      });
+      return;
+    }
+    const session = deps.chats.get(routeParam(req, "sessionId"));
+    if (session.snapshot().running) {
+      res.status(409).json({
+        error:
+          "Wait for the active turn to finish before switching session mode.",
+      });
+      return;
+    }
+    session.setSessionMode(mode as ChatSessionMode);
     res.json({ session: session.snapshot() });
   });
 }

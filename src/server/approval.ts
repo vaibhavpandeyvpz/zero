@@ -2,6 +2,7 @@ import {
   TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED,
   allowToolForSession,
   isToolSessionAllowed,
+  isYoloEnabled,
 } from "hoomanjs";
 import type { ApprovalDecision, ApprovalRequest } from "../client/types.js";
 
@@ -71,13 +72,12 @@ export class ApprovalController {
 
 export function createApprovalHandler(
   controller: ApprovalController | null | undefined,
-  options: { yolo: () => boolean },
 ): (event: ApprovalToolCallEvent) => Promise<void> {
   return async (event: ApprovalToolCallEvent) => {
     const toolName = event.toolUse.name;
     if (
       !controller ||
-      options.yolo() ||
+      isYoloEnabled(event.agent) ||
       TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED.has(toolName) ||
       isToolSessionAllowed(event.agent, toolName)
     ) {
