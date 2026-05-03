@@ -3,6 +3,7 @@ import {
   allowToolForSession,
   isToolSessionAllowed,
   isYoloEnabled,
+  planModeWriteEditRejectionMessage,
 } from "hoomanjs";
 import type { ApprovalDecision, ApprovalRequest } from "../client/types.js";
 
@@ -75,11 +76,20 @@ export function createApprovalHandler(
 ): (event: ApprovalToolCallEvent) => Promise<void> {
   return async (event: ApprovalToolCallEvent) => {
     const toolName = event.toolUse.name;
+    const planReject = planModeWriteEditRejectionMessage(
+      event.agent,
+      toolName,
+      event.toolUse.input,
+    );
+    if (planReject) {
+      event.cancel = planReject;
+      return;
+    }
     if (
       !controller ||
       isYoloEnabled(event.agent) ||
       TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED.has(toolName) ||
-      isToolSessionAllowed(event.agent, toolName)
+      isToolSessionAllowed(event.agent, toolName, event.toolUse.input)
     ) {
       return;
     }

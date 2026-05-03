@@ -90,7 +90,7 @@ export type ChatSessionSnapshot = {
   running: boolean;
   /** Auto-approve tools for this session; also updates channel/daemon preference when changed. */
   yolo: boolean;
-  /** Default, plan (narrow + plan tools), or ask (narrow, no plan lifecycle tools). */
+  /** Default, plan (read only tools + plan workflow), or ask (read only tools, no plan lifecycle). */
   sessionMode: ChatSessionMode;
   model: string;
   models: Array<{
