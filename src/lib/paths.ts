@@ -2,10 +2,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const APP_FOLDER = ".zero";
-const ZEROHC_HOME_ENV = "ZEROHC_HOME";
+const ZERO_HOME_ENV = "ZERO_HOME";
 
 export function basePath(): string {
-  const override = process.env[ZEROHC_HOME_ENV]?.trim();
+  const override = process.env[ZERO_HOME_ENV]?.trim();
   return override || join(homedir(), APP_FOLDER);
 }
 
