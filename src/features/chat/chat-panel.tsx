@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ChangeEvent, DragEvent } from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -186,6 +186,17 @@ export function ChatPanel(props: {
                     : "Type a message"
                 }
                 onChange={(event) => props.setInput(event.target.value)}
+                onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+                  const files = filesFromClipboard(event.clipboardData);
+                  if (files.length === 0) {
+                    return;
+                  }
+                  event.preventDefault();
+                  if (props.uploadingAttachments) {
+                    return;
+                  }
+                  void props.onAddAttachments(files);
+                }}
                 onKeyDown={(event) => {
                   if (
                     event.key === "Enter" &&
@@ -354,6 +365,30 @@ export function ChatPanel(props: {
   );
 }
 
+/** Pasted screenshots and images expose `File`s via DataTransferItem; some UIs only populate `files`. */
+function filesFromClipboard(data: DataTransfer | null): File[] {
+  if (!data) {
+    return [];
+  }
+  const fromItems: File[] = [];
+  if (data.items) {
+    for (let i = 0; i < data.items.length; i++) {
+      const item = data.items[i];
+      if (item.kind !== "file") {
+        continue;
+      }
+      const file = item.getAsFile();
+      if (file) {
+        fromItems.push(file);
+      }
+    }
+  }
+  if (fromItems.length > 0) {
+    return fromItems;
+  }
+  return data.files?.length ? Array.from(data.files) : [];
+}
+
 function AttachmentDropzone(props: {
   attachments: UploadedAttachment[];
   uploading: boolean;
@@ -405,7 +440,7 @@ function AttachmentDropzone(props: {
               {props.uploading ? "Uploading attachments" : "Add attachments"}
             </span>
             <span className="block truncate text-xs text-muted-foreground">
-              Drop files here or click to choose.
+              Drop files here, paste in the message box, or click to choose.
             </span>
           </span>
         </span>
