@@ -593,7 +593,6 @@ function SettingsPanel(props: {
                     "behaviour",
                     "communication",
                     "execution",
-                    "engineering",
                     "guardrails",
                   ] as const
                 ).map((prompt) => (

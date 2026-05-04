@@ -24,7 +24,6 @@ export const PROMPT_LABELS = {
   behaviour: "Behaviour",
   communication: "Communication",
   execution: "Execution",
-  engineering: "Engineering",
   guardrails: "Guardrails",
 } as const;
 
