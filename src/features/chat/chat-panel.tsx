@@ -46,11 +46,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   attachmentPreviewUrl,
@@ -548,12 +543,12 @@ function ChatBubble({
   const isAssistant = line.role === "assistant";
   const isTool = line.role === "tool";
   const headerIcon = !isTool && !line.done;
+  const resolvedToolName = line.toolName ?? line.title;
   const label = isTool
-    ? "Tool"
+    ? `Tool - ${resolvedToolName ?? "unknown"}`
     : isAssistant
       ? agentName
       : (line.toolName ?? line.title ?? line.role);
-  const toolName = line.toolName ?? line.title ?? "Tool";
   const userContent = isUser
     ? parseMessageAttachments(line.content)
     : { text: line.content, attachments: [] };
@@ -578,18 +573,7 @@ function ChatBubble({
                 <Loader2Icon className="size-3 animate-spin" />
               </span>
             ) : null}
-            {isTool ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="font-medium">{label}</span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{toolName}</p>
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <span className="font-medium">{label}</span>
-            )}
+            <span className="font-medium">{label}</span>
             {!line.done ? <span>running</span> : null}
           </div>
         ) : null}
