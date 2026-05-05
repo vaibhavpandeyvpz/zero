@@ -30,6 +30,7 @@ export const TOOL_LABELS = {
   filesystem: "Filesystem",
   shell: "Shell",
   sleep: "Sleep",
+  wiki: "Wiki",
 } as const;
 
 export const MCP_CONNECTION_LABELS = {

@@ -94,6 +94,7 @@ import {
 import { useSkillInstallFlow } from "@/features/settings/use-skill-install-flow";
 import { useZeroData } from "@/features/app/use-zero-data";
 import { useChatSession } from "@/features/chat/use-chat-session";
+import type { LtmConfig } from "hoomanjs";
 
 export function ZeroShell() {
   const [activeTab, setActiveTab] = useState("chat");
@@ -334,7 +335,6 @@ function SettingsPanel(props: {
                   <TabsTrigger value="search">Search</TabsTrigger>
                   <TabsTrigger value="prompts">Prompts</TabsTrigger>
                   <TabsTrigger value="tools">Tools</TabsTrigger>
-                  <TabsTrigger value="memory">Memory</TabsTrigger>
                   <TabsTrigger value="agents">Subagents</TabsTrigger>
                   <TabsTrigger value="compaction">Compaction</TabsTrigger>
                 </TabsList>
@@ -632,140 +632,111 @@ function SettingsPanel(props: {
                 ))}
               </TabsContent>
 
-              <TabsContent value="tools" className="mt-0 grid gap-3">
-                {(
-                  ["todo", "fetch", "filesystem", "shell", "sleep"] as const
-                ).map((tool) => (
+              <TabsContent value="tools" className="mt-0 flex flex-col gap-4">
+                <div className="grid gap-3">
+                  {(
+                    [
+                      "todo",
+                      "fetch",
+                      "filesystem",
+                      "shell",
+                      "sleep",
+                    ] as const
+                  ).map((tool) => (
+                    <ToggleRow
+                      key={tool}
+                      label={TOOL_LABELS[tool]}
+                      checked={configDraft.tools[tool].enabled}
+                      onCheckedChange={(enabled) =>
+                        updateToolToggle(tool, enabled)
+                      }
+                    />
+                  ))}
                   <ToggleRow
-                    key={tool}
-                    label={TOOL_LABELS[tool]}
-                    checked={configDraft.tools[tool].enabled}
+                    label={TOOL_LABELS.wiki}
+                    checked={configDraft.tools.wiki.enabled}
                     onCheckedChange={(enabled) =>
-                      updateToolToggle(tool, enabled)
+                      updateToolToggle("wiki", enabled)
                     }
                   />
-                ))}
-              </TabsContent>
-
-              <TabsContent value="memory" className="mt-0 flex flex-col gap-4">
-                <ToggleRow
-                  label="Long-term memory"
-                  checked={configDraft.tools.ltm.enabled}
-                  onCheckedChange={(enabled) =>
-                    updateDraft((draft) => ({
-                      ...draft,
-                      tools: {
-                        ...draft.tools,
-                        ltm: { ...draft.tools.ltm, enabled },
-                      },
-                    }))
-                  }
-                />
-                {configDraft.tools.ltm.enabled ? (
-                  <FieldGroup className="grid gap-3 md:grid-cols-2">
-                    <Field>
-                      <FieldLabel>Memory URL</FieldLabel>
-                      <Input
-                        value={configDraft.tools.ltm.chroma.url}
-                        onChange={(event) =>
-                          updateDraft((draft) => ({
-                            ...draft,
-                            tools: {
-                              ...draft.tools,
-                              ltm: {
-                                ...draft.tools.ltm,
-                                chroma: {
-                                  ...draft.tools.ltm.chroma,
-                                  url: event.target.value,
-                                },
-                              },
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Memory collection</FieldLabel>
-                      <Input
-                        value={configDraft.tools.ltm.chroma.collection.memory}
-                        onChange={(event) =>
-                          updateDraft((draft) => ({
-                            ...draft,
-                            tools: {
-                              ...draft.tools,
-                              ltm: {
-                                ...draft.tools.ltm,
-                                chroma: {
-                                  ...draft.tools.ltm.chroma,
-                                  collection: { memory: event.target.value },
-                                },
-                              },
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
-                  </FieldGroup>
-                ) : null}
-                <ToggleRow
-                  label="Wiki"
-                  checked={configDraft.tools.wiki.enabled}
-                  onCheckedChange={(enabled) =>
-                    updateDraft((draft) => ({
-                      ...draft,
-                      tools: {
-                        ...draft.tools,
-                        wiki: { ...draft.tools.wiki, enabled },
-                      },
-                    }))
-                  }
-                />
-                {configDraft.tools.wiki.enabled ? (
-                  <FieldGroup className="grid gap-3 md:grid-cols-2">
-                    <Field>
-                      <FieldLabel>Wiki URL</FieldLabel>
-                      <Input
-                        value={configDraft.tools.wiki.chroma.url}
-                        onChange={(event) =>
-                          updateDraft((draft) => ({
-                            ...draft,
-                            tools: {
-                              ...draft.tools,
-                              wiki: {
-                                ...draft.tools.wiki,
-                                chroma: {
-                                  ...draft.tools.wiki.chroma,
-                                  url: event.target.value,
-                                },
-                              },
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Wiki collection</FieldLabel>
-                      <Input
-                        value={configDraft.tools.wiki.chroma.collection.wiki}
-                        onChange={(event) =>
-                          updateDraft((draft) => ({
-                            ...draft,
-                            tools: {
-                              ...draft.tools,
-                              wiki: {
-                                ...draft.tools.wiki,
-                                chroma: {
-                                  ...draft.tools.wiki.chroma,
-                                  collection: { wiki: event.target.value },
-                                },
-                              },
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
-                  </FieldGroup>
-                ) : null}
+                </div>
+                <div className="flex flex-col gap-4 border-t pt-4">
+                  <p className="text-muted-foreground text-sm">
+                    Long-term memory uses a Chroma server for vector storage.
+                  </p>
+                  <ToggleRow
+                    label="Long-term memory"
+                    checked={configDraft.tools.ltm.enabled}
+                    onCheckedChange={(enabled) =>
+                      updateDraft((draft) => ({
+                        ...draft,
+                        tools: {
+                          ...draft.tools,
+                          ltm: { ...draft.tools.ltm, enabled },
+                        },
+                      }))
+                    }
+                  />
+                  {configDraft.tools.ltm.enabled
+                    ? (() => {
+                        const ltm: LtmConfig = configDraft.tools.ltm;
+                        return (
+                          <FieldGroup className="grid gap-3 md:grid-cols-2">
+                            <Field>
+                              <FieldLabel>Chroma URL</FieldLabel>
+                              <Input
+                                value={ltm.chroma.url}
+                                onChange={(event) =>
+                                  updateDraft((draft) => {
+                                    const prev: LtmConfig = draft.tools.ltm;
+                                    return {
+                                      ...draft,
+                                      tools: {
+                                        ...draft.tools,
+                                        ltm: {
+                                          ...prev,
+                                          chroma: {
+                                            ...prev.chroma,
+                                            url: event.target.value,
+                                          },
+                                        },
+                                      },
+                                    };
+                                  })
+                                }
+                              />
+                            </Field>
+                            <Field>
+                              <FieldLabel>Memory collection</FieldLabel>
+                              <Input
+                                value={ltm.chroma.collection.memory}
+                                onChange={(event) =>
+                                  updateDraft((draft) => {
+                                    const prev: LtmConfig = draft.tools.ltm;
+                                    return {
+                                      ...draft,
+                                      tools: {
+                                        ...draft.tools,
+                                        ltm: {
+                                          ...prev,
+                                          chroma: {
+                                            ...prev.chroma,
+                                            collection: {
+                                              memory: event.target.value,
+                                            },
+                                          },
+                                        },
+                                      },
+                                    };
+                                  })
+                                }
+                              />
+                            </Field>
+                          </FieldGroup>
+                        );
+                      })()
+                    : null}
+                </div>
               </TabsContent>
 
               <TabsContent value="agents" className="mt-0 flex flex-col gap-4">

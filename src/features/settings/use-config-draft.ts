@@ -98,7 +98,7 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
   }
 
   function updateToolToggle(
-    tool: "todo" | "fetch" | "filesystem" | "shell" | "sleep",
+    tool: "todo" | "fetch" | "filesystem" | "shell" | "sleep" | "wiki",
     enabled: boolean,
   ) {
     updateDraft((draft) => ({
