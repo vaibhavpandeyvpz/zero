@@ -547,7 +547,7 @@ function SettingsPanel(props: {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {(["brave", "serper", "tavily"] as const).map(
+                            {(["brave", "exa", "serper", "tavily"] as const).map(
                               (item) => (
                                 <SelectItem key={item} value={item}>
                                   {SEARCH_PROVIDER_LABELS[item]}

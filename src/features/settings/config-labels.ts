@@ -11,6 +11,7 @@ type McpTransportType = McpTransportDraft["type"];
 
 export const SEARCH_PROVIDER_LABELS = {
   brave: "Brave",
+  exa: "Exa",
   serper: "Serper",
   tavily: "Tavily",
 } as const;
