@@ -56,17 +56,6 @@ import {
 import { useAutoScroll } from "./use-auto-scroll";
 import { useTextareaAutosize } from "./use-textarea-autosize";
 
-const PROVIDER_MODEL_TAIL_MAX = 25;
-
-/** Keep up to `PROVIDER_MODEL_TAIL_MAX` chars from the end; prepend … when shortened. */
-function formatProviderModel(provider: string, model: string): string {
-  const combined = `${provider}/${model}`;
-  if (combined.length <= PROVIDER_MODEL_TAIL_MAX) {
-    return combined;
-  }
-  return `\u2026${combined.slice(-PROVIDER_MODEL_TAIL_MAX)}`;
-}
-
 const MODE_SELECT_LABELS: Record<ChatSessionMode, string> = {
   default: "Default",
   plan: "Plan",
@@ -82,9 +71,7 @@ function modelSelectTriggerLabel(
   currentName: string,
 ): string | null {
   const entry = models.find((m) => m.name === currentName);
-  return entry
-    ? `${entry.name} · ${formatProviderModel(entry.provider, entry.model)}`
-    : null;
+  return entry?.name ?? null;
 }
 
 export function ChatPanel(props: {
@@ -174,7 +161,7 @@ export function ChatPanel(props: {
 
         <Card className="shrink-0 py-0">
           <CardContent className="flex flex-col gap-2 p-3">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2">
               <Textarea
                 ref={textareaRef}
                 rows={1}
@@ -218,6 +205,7 @@ export function ChatPanel(props: {
                 }
                 disabled={!props.session?.running && !canSend}
                 size="icon"
+                className="h-full min-h-9 max-h-14 w-auto shrink-0 aspect-square"
                 variant={props.session?.running ? "outline" : "default"}
                 onClick={
                   props.session?.running ? props.onCancel : props.onSubmit
@@ -238,11 +226,6 @@ export function ChatPanel(props: {
               onAdd={props.onAddAttachments}
               onRemove={props.onRemoveAttachment}
             />
-            {props.daemon?.enabled ? (
-              <p className="px-1 text-xs text-muted-foreground">
-                Channel messages share this agent queue.
-              </p>
-            ) : null}
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 {props.session?.models.length ? (
@@ -340,7 +323,6 @@ export function ChatPanel(props: {
             />
           </div>
           <Separator />
-          <StatusRow label="Yolo" value={props.daemon?.yolo ? "On" : "Off"} />
           <StatusRow
             label="Pending messages"
             value={String(props.daemon?.queued ?? 0)}
