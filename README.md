@@ -21,7 +21,7 @@ Web UI for **Hooman**: chat with your agent, manage MCP servers and skills, and 
 ## Requirements
 
 - **Node.js** ≥ 24 (see `engines` in [`package.json`](package.json))
-- **hoomanjs** pinned in [`package.json`](package.json) (e.g. `^1.26.1`); Settings → LLM providers follow Hooman’s `LlmProvider` list, including **TensorZero** for a TensorZero gateway OpenAI-compatible endpoint.
+- **hoomanjs** pinned in [`package.json`](package.json) (e.g. `^1.26.2`); Settings → LLM providers follow Hooman’s `LlmProvider` list, including **TensorZero** for a TensorZero gateway OpenAI-compatible endpoint.
 
 ## Quick start
 
