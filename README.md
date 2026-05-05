@@ -21,7 +21,7 @@ Web UI for **Hooman**: chat with your agent, manage MCP servers and skills, and 
 ## Requirements
 
 - **Node.js** ≥ 24 (see `engines` in [`package.json`](package.json))
-- **hoomanjs** pinned in [`package.json`](package.json) (e.g. `^1.27.0`); Settings → LLM providers follow Hooman’s `LlmProvider` list, including **Bitfrost** and **TensorZero** where applicable.
+- **hoomanjs** pinned in [`package.json`](package.json) (e.g. `^1.27.1`); Settings → LLM providers follow Hooman’s `LlmProvider` list, including **Bifrost** and **TensorZero** where applicable.
 
 ## Quick start
 
