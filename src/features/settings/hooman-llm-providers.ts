@@ -8,6 +8,7 @@
  */
 export const LLM_PROVIDER_OPTIONS = [
   "anthropic",
+  "bitfrost",
   "google",
   "groq",
   "moonshot",
@@ -22,6 +23,7 @@ export type LlmProviderOption = (typeof LLM_PROVIDER_OPTIONS)[number];
 
 export const LLM_PROVIDER_LABELS: Record<LlmProviderOption, string> = {
   anthropic: "Anthropic",
+  bitfrost: "Bitfrost",
   google: "Google",
   groq: "Groq",
   moonshot: "Moonshot",
