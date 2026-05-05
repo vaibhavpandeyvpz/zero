@@ -31,8 +31,8 @@
   "type": "module",
   "scripts": {
     "build": "next build && tsc -p tsconfig.server.json",
-    "dev": "NODE_ENV=development pm2-runtime start src/server/api.ts --name zero --interpreter ./node_modules/.bin/tsx",
-    "start": "NODE_ENV=production pm2-runtime start dist/server/api.js --name zero",
+    "dev": "NODE_ENV=development PORT=3030 pm2-runtime start src/server/api.ts --name zero --interpreter ./node_modules/.bin/tsx",
+    "start": "NODE_ENV=production PORT=3030 pm2-runtime start dist/server/api.js --name zero",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
@@ -41,13 +41,13 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@strands-agents/sdk": "^1.0.0-rc.3",
+    "@strands-agents/sdk": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "commander": "^14.0.3",
     "express": "^5.2.1",
     "fastq": "^1.20.1",
-    "hoomanjs": "^1.25.0",
+    "hoomanjs": "^1.26.1",
     "lucide-react": "^0.553.0",
     "multer": "^2.1.1",
     "next": "^16.0.10",

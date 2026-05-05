@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ZeroConfigResponse } from "@/client/types";
+import { LLM_PROVIDER_OPTIONS } from "./hooman-llm-providers";
 
 export type AgentConfigDraft = ZeroConfigResponse["config"];
 
@@ -65,20 +66,7 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
     setInstructions(latest.instructions);
   }, [serverPayloadKey]);
 
-  const providers = useMemo(
-    () =>
-      [
-        "anthropic",
-        "google",
-        "groq",
-        "moonshot",
-        "openai",
-        "ollama",
-        "bedrock",
-        "xai",
-      ] as const,
-    [],
-  );
+  const providers = useMemo(() => LLM_PROVIDER_OPTIONS, []);
 
   const selectedLlm = useMemo(
     () =>

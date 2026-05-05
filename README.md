@@ -21,6 +21,7 @@ Web UI for **Hooman**: chat with your agent, manage MCP servers and skills, and 
 ## Requirements
 
 - **Node.js** ≥ 24 (see `engines` in [`package.json`](package.json))
+- **hoomanjs** pinned in [`package.json`](package.json) (e.g. `^1.26.1`); Settings → LLM providers follow Hooman’s `LlmProvider` list, including **TensorZero** for a TensorZero gateway OpenAI-compatible endpoint.
 
 ## Quick start
 
@@ -29,6 +30,8 @@ npm ci
 npm run build
 npm start
 ```
+
+With `npm run dev` / `npm start`, listen on **http://127.0.0.1:3030** (`PORT=3030` in those scripts). If you run the server entry without `PORT`, the fallback in code is **3000**. Override with `PORT` and `HOST` as needed.
 
 Adjust scripts for developer v/s deployment (see [`package.json`](package.json) `dev` / `start`).
 

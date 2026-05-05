@@ -1,18 +1,13 @@
 import type { McpServerView } from "@/client/types";
 
+export {
+  LLM_PROVIDER_LABELS,
+  LLM_PROVIDER_OPTIONS,
+  type LlmProviderOption,
+} from "./hooman-llm-providers";
+
 type McpTransportDraft = McpServerView["transport"];
 type McpTransportType = McpTransportDraft["type"];
-
-export const LLM_PROVIDER_LABELS = {
-  anthropic: "Anthropic",
-  google: "Google",
-  groq: "Groq",
-  moonshot: "Moonshot",
-  openai: "OpenAI",
-  ollama: "Ollama",
-  bedrock: "Bedrock",
-  xai: "xAI",
-} as const;
 
 export const SEARCH_PROVIDER_LABELS = {
   brave: "Brave",
