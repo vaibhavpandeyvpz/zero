@@ -145,7 +145,9 @@ export function ChatPanel(props: {
             {props.session?.running &&
             todos?.visible &&
             todos.todos.length > 0 ? (
-              <TodoPanel todos={todos.todos} />
+              <div className="border-t bg-muted/30 p-3 sm:p-4">
+                <TodoPanel todos={todos.todos} />
+              </div>
             ) : null}
 
             {props.session?.approvals ? (
@@ -741,41 +743,99 @@ function FileDiffPreview({
   );
 }
 
+function todoStatusLabel(status: string): string {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "in_progress":
+      return "In progress";
+    case "completed":
+      return "Completed";
+    default:
+      return status
+        .split("_")
+        .filter(Boolean)
+        .map(
+          (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+        )
+        .join(" ");
+  }
+}
+
+function todoStatusBadgeClass(status: string): string {
+  switch (status) {
+    case "pending":
+      return "border-amber-500/35 bg-amber-500/[0.13] text-amber-950 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100";
+    case "in_progress":
+      return "border-sky-500/35 bg-sky-500/[0.13] text-sky-950 dark:border-sky-400/40 dark:bg-sky-400/10 dark:text-sky-100";
+    case "completed":
+      return "border-emerald-500/35 bg-emerald-500/[0.13] text-emerald-950 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:text-emerald-100";
+    default:
+      return "border-border bg-muted/80 text-muted-foreground";
+  }
+}
+
 function TodoPanel({
   todos,
 }: {
   todos: Array<{ content: string; status: string; activeForm: string }>;
 }) {
+  const completed = todos.filter((t) => t.status === "completed").length;
+  const summary =
+    completed === todos.length
+      ? `${todos.length} done`
+      : `${completed}/${todos.length} done`;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ClipboardListIcon />
-          Todos
-        </CardTitle>
-        <CardDescription>
+    <Card className="mx-auto w-full max-w-3xl py-0 shadow-sm">
+      <CardHeader className="space-y-1 pb-2 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <ClipboardListIcon className="size-4 shrink-0 text-muted-foreground" />
+            Todos
+          </CardTitle>
+          <Badge variant="secondary" className="font-mono text-xs font-normal">
+            {summary}
+          </Badge>
+        </div>
+        <CardDescription className="text-xs leading-snug">
           Current agent task list for this turn.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {todos.map((todo, index) => (
-          <div
-            key={`${todo.content}-${index}`}
-            className="flex items-start gap-2 text-sm"
-          >
-            <Badge
-              variant={todo.status === "completed" ? "secondary" : "outline"}
-            >
-              {todo.status}
-            </Badge>
-            <div>
-              <p>{todo.activeForm || todo.content}</p>
-              {todo.activeForm && todo.activeForm !== todo.content ? (
-                <p className="text-xs text-muted-foreground">{todo.content}</p>
-              ) : null}
-            </div>
+      <CardContent className="pb-4 pt-0">
+        <div className="rounded-lg bg-muted/30 p-2">
+          <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+            Tasks
           </div>
-        ))}
+          <ul className="max-h-52 divide-y divide-border/60 overflow-y-auto">
+            {todos.map((todo, index) => (
+              <li
+                key={`${todo.content}-${index}`}
+                className="flex gap-2 py-2 first:pt-0 last:pb-0"
+              >
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "h-5 shrink-0 self-center px-1.5 text-[10px] font-medium tracking-tight",
+                    todoStatusBadgeClass(todo.status),
+                  )}
+                >
+                  {todoStatusLabel(todo.status)}
+                </Badge>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium leading-snug">
+                    {todo.activeForm || todo.content}
+                  </p>
+                  {todo.activeForm && todo.activeForm !== todo.content ? (
+                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                      {todo.content}
+                    </p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       </CardContent>
     </Card>
   );

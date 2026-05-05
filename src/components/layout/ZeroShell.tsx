@@ -77,6 +77,10 @@ import {
   TOOL_LABELS,
 } from "@/features/settings/config-labels";
 import {
+  exampleLlmParamsJson,
+  type LlmProviderOption,
+} from "@/features/settings/hooman-llm-providers";
+import {
   configErrorMessages,
   skillFolder,
 } from "@/features/settings/form-utils";
@@ -241,6 +245,7 @@ function SettingsPanel(props: {
     setInstructions,
     setSelectedLlmName,
     setCurrentLlmParamsText,
+    getServerLlmBaseline,
     updateDraft,
     updateToolToggle,
     patchSelectedLlm,
@@ -413,15 +418,26 @@ function SettingsPanel(props: {
                         <FieldLabel>Provider</FieldLabel>
                         <Select
                           value={selectedLlm.options.provider}
-                          onValueChange={(value) =>
+                          onValueChange={(value) => {
+                            const provider = value as LlmProviderOption;
                             patchSelectedLlm((entry) => ({
                               ...entry,
                               options: {
                                 ...entry.options,
-                                provider: value as never,
+                                provider: provider as never,
                               },
-                            }))
-                          }
+                            }));
+                            const baseline = getServerLlmBaseline(
+                              selectedLlm.name,
+                            );
+                            if (baseline?.provider === provider) {
+                              setCurrentLlmParamsText(baseline.paramsText);
+                            } else {
+                              setCurrentLlmParamsText(
+                                exampleLlmParamsJson(provider),
+                              );
+                            }
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Provider" />

@@ -16,6 +16,11 @@ function defaultLlmName(config: AgentConfigDraft): string {
   );
 }
 
+export type ServerLlmBaseline = {
+  provider: string;
+  paramsText: string;
+};
+
 export function useConfigDraft(config: ZeroConfigResponse | null) {
   const [configDraft, setConfigDraft] = useState<AgentConfigDraft | null>(null);
   const [configErrors, setConfigErrors] = useState<string[]>([]);
@@ -27,6 +32,9 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
 
   const configRef = useRef(config);
   configRef.current = config;
+
+  /** Last server snapshot per LLM name (for restoring params when provider matches saved). */
+  const serverLlmBaselineRef = useRef<Record<string, ServerLlmBaseline>>({});
 
   /** Stable identity for server payload so reference churn on `config` does not reset local draft state. */
   const serverPayloadKey = useMemo(() => {
@@ -45,10 +53,20 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
         setSelectedLlmName("");
         setLlmParamsText({});
         setInstructions("");
+        serverLlmBaselineRef.current = {};
       }
       return;
     }
     const next = cloneConfig(latest.config);
+    serverLlmBaselineRef.current = Object.fromEntries(
+      next.llms.map((entry) => [
+        entry.name,
+        {
+          provider: entry.options.provider,
+          paramsText: JSON.stringify(entry.options.params ?? {}, null, 2),
+        },
+      ]),
+    );
     setConfigDraft(next);
     setSelectedLlmName((prev) =>
       prev && next.llms.some((entry) => entry.name === prev)
@@ -97,6 +115,10 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
       return;
     }
     setLlmParamsText((current) => ({ ...current, [selectedLlmName]: value }));
+  }
+
+  function getServerLlmBaseline(name: string): ServerLlmBaseline | undefined {
+    return serverLlmBaselineRef.current[name];
   }
 
   function parseLlmParamsText(
@@ -179,6 +201,13 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
       ...current,
       [name]: JSON.stringify({}, null, 2),
     }));
+    serverLlmBaselineRef.current = {
+      ...serverLlmBaselineRef.current,
+      [name]: {
+        provider: "ollama",
+        paramsText: JSON.stringify({}, null, 2),
+      },
+    };
     setSelectedLlmName(name);
   }
 
@@ -204,6 +233,9 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
       delete next[selectedLlm.name];
       return next;
     });
+    const baselineNext = { ...serverLlmBaselineRef.current };
+    delete baselineNext[selectedLlm.name];
+    serverLlmBaselineRef.current = baselineNext;
     setSelectedLlmName(fallback);
   }
 
@@ -229,6 +261,13 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
       delete next[selectedLlm.name];
       return next;
     });
+    const baseline = serverLlmBaselineRef.current[selectedLlm.name];
+    if (baseline !== undefined) {
+      const baselineNext = { ...serverLlmBaselineRef.current };
+      delete baselineNext[selectedLlm.name];
+      baselineNext[trimmed] = baseline;
+      serverLlmBaselineRef.current = baselineNext;
+    }
     setSelectedLlmName(trimmed);
   }
 
@@ -255,6 +294,7 @@ export function useConfigDraft(config: ZeroConfigResponse | null) {
     setInstructions,
     setSelectedLlmName,
     setCurrentLlmParamsText,
+    getServerLlmBaseline,
     updateDraft,
     updateToolToggle,
     patchSelectedLlm,
