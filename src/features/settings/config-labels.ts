@@ -30,6 +30,7 @@ export const TOOL_LABELS = {
   filesystem: "Filesystem",
   shell: "Shell",
   sleep: "Sleep",
+  memory: "Memory",
   wiki: "Wiki",
 } as const;
 

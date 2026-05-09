@@ -12,6 +12,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerMcpRoutes } from "./routes/mcp.js";
 import { registerServiceRoutes } from "./routes/services.js";
 import { registerSkillsRoutes } from "./routes/skills.js";
+import { registerWikiRoutes } from "./routes/wiki.js";
 
 export type NextRequestHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -30,6 +31,7 @@ export function createServerApp(deps: {
   registerConfigRoutes(app, deps);
   registerMcpRoutes(app, deps);
   registerSkillsRoutes(app, deps);
+  registerWikiRoutes(app, deps);
   registerChannelRoutes(app, deps);
   registerAttachmentRoutes(app, { attachmentUpload: createAttachmentUpload() });
   registerChatRoutes(app, deps);

@@ -8,6 +8,8 @@ import type {
   TodoViewState,
 } from "hoomanjs";
 
+export type { WikiDocRecord, WikiListResult } from "hoomanjs";
+
 export type NoticeKind = "success" | "error" | "info";
 
 export type ZeroPaths = {

@@ -1,20 +1,26 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   BotIcon,
   CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   MoonIcon,
   PlusIcon,
   SettingsIcon,
   SparklesIcon,
   SunIcon,
   RotateCcwIcon,
+  Trash2Icon,
+  UploadIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import {
   addMcp,
+  deleteWikiDocument,
+  getWikiDocuments,
   installSkill,
   removeMcp,
   removeSkill,
@@ -22,11 +28,13 @@ import {
   saveConfig,
   searchSkills,
   updateMcp,
+  uploadWikiDocument,
 } from "@/client/api";
 import type {
   McpServerView,
   SkillSearchResponse,
   SkillsResponse,
+  WikiListResult,
   ZeroConfigResponse,
 } from "@/client/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -94,7 +102,86 @@ import {
 import { useSkillInstallFlow } from "@/features/settings/use-skill-install-flow";
 import { useZeroData } from "@/features/app/use-zero-data";
 import { useChatSession } from "@/features/chat/use-chat-session";
-import type { LtmConfig } from "hoomanjs";
+
+const WIKI_SETTINGS_PAGE_SIZE = 15;
+
+function wikiDocKindLabel(fileName: string, mime: string): string {
+  const lower = fileName.toLowerCase();
+  if (mime === "application/pdf" || lower.endsWith(".pdf")) return "PDF";
+  if (
+    mime.includes("wordprocessingml") ||
+    mime === "application/msword" ||
+    lower.endsWith(".docx") ||
+    lower.endsWith(".doc")
+  ) {
+    return "Word";
+  }
+  return "Document";
+}
+
+function wikiListPageSize(list: WikiListResult, requestSize: number): number {
+  const ps = list.pageSize;
+  if (typeof ps === "number" && Number.isFinite(ps) && ps > 0) {
+    return Math.floor(ps);
+  }
+  return requestSize;
+}
+
+function wikiListTotalExplicit(list: WikiListResult): number | null {
+  const t = list.total;
+  if (typeof t === "number" && Number.isFinite(t) && t >= 0) {
+    return t;
+  }
+  return null;
+}
+
+function wikiPagerContentPage(
+  list: WikiListResult | null,
+  uiPage: number,
+): number {
+  if (!list) return uiPage;
+  const p = list.page;
+  if (typeof p === "number" && Number.isFinite(p) && p > 0) {
+    return Math.floor(p);
+  }
+  return uiPage;
+}
+
+function wikiTotalPagesFromList(
+  list: WikiListResult,
+  contentPage: number,
+  requestSize: number,
+): number {
+  const ps = wikiListPageSize(list, requestSize);
+  const explicit = wikiListTotalExplicit(list);
+  if (explicit != null) {
+    return Math.max(1, Math.ceil(explicit / ps));
+  }
+  const n = list.items.length;
+  if (n < ps) {
+    return Math.max(1, contentPage);
+  }
+  return contentPage + 1;
+}
+
+function wikiDocumentsSubtitle(
+  list: WikiListResult,
+  contentPage: number,
+  requestSize: number,
+): string {
+  const ps = wikiListPageSize(list, requestSize);
+  const explicit = wikiListTotalExplicit(list);
+  if (explicit != null) {
+    if (explicit === 0) return "0 documents";
+    return explicit === 1 ? "1 document" : `${explicit} documents`;
+  }
+  const n = list.items.length;
+  if (n < ps) {
+    const t = (contentPage - 1) * ps + n;
+    return t === 1 ? "1 document" : `${t} documents`;
+  }
+  return `At least ${contentPage * ps} documents`;
+}
 
 export function ZeroShell() {
   const [activeTab, setActiveTab] = useState("chat");
@@ -297,6 +384,52 @@ function SettingsPanel(props: {
     submitSkillSourceInstall,
   } = skillsFlow;
 
+  const [settingsSection, setSettingsSection] = useState("general");
+  const [wikiList, setWikiList] = useState<WikiListResult | null>(null);
+  const [wikiListBusy, setWikiListBusy] = useState(false);
+  const [wikiPage, setWikiPage] = useState(1);
+  const wikiFileInputRef = useRef<HTMLInputElement>(null);
+
+  const wikiTotalsPage =
+    wikiListBusy || wikiList == null
+      ? wikiPage
+      : wikiPagerContentPage(wikiList, wikiPage);
+  const wikiTotalPages =
+    wikiList == null
+      ? 1
+      : wikiTotalPagesFromList(
+          wikiList,
+          wikiTotalsPage,
+          WIKI_SETTINGS_PAGE_SIZE,
+        );
+  const wikiDocCountLabel =
+    wikiList == null
+      ? ""
+      : wikiDocumentsSubtitle(
+          wikiList,
+          wikiTotalsPage,
+          WIKI_SETTINGS_PAGE_SIZE,
+        );
+
+  const loadWikiDocuments = useCallback(async () => {
+    setWikiListBusy(true);
+    try {
+      setWikiList(await getWikiDocuments(wikiPage, WIKI_SETTINGS_PAGE_SIZE));
+    } catch (error) {
+      toast.error((error as Error).message);
+      setWikiList(null);
+    } finally {
+      setWikiListBusy(false);
+    }
+  }, [wikiPage]);
+
+  useEffect(() => {
+    if (settingsSection !== "wiki") {
+      return;
+    }
+    void loadWikiDocuments();
+  }, [settingsSection, loadWikiDocuments]);
+
   async function runTask(task: () => Promise<void>, success: string) {
     props.setBusy(true);
     try {
@@ -327,7 +460,11 @@ function SettingsPanel(props: {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {configDraft ? (
-            <Tabs defaultValue="general" className="flex flex-col gap-4">
+            <Tabs
+              value={settingsSection}
+              onValueChange={setSettingsSection}
+              className="flex flex-col gap-4"
+            >
               <div className="overflow-x-auto overflow-y-hidden pb-1">
                 <TabsList variant="line">
                   <TabsTrigger value="general">General</TabsTrigger>
@@ -335,6 +472,7 @@ function SettingsPanel(props: {
                   <TabsTrigger value="search">Search</TabsTrigger>
                   <TabsTrigger value="prompts">Prompts</TabsTrigger>
                   <TabsTrigger value="tools">Tools</TabsTrigger>
+                  <TabsTrigger value="wiki">Wiki</TabsTrigger>
                   <TabsTrigger value="agents">Subagents</TabsTrigger>
                   <TabsTrigger value="compaction">Compaction</TabsTrigger>
                 </TabsList>
@@ -641,6 +779,7 @@ function SettingsPanel(props: {
                       "filesystem",
                       "shell",
                       "sleep",
+                      "memory",
                     ] as const
                   ).map((tool) => (
                     <ToggleRow
@@ -652,91 +791,166 @@ function SettingsPanel(props: {
                       }
                     />
                   ))}
-                  <ToggleRow
-                    label={TOOL_LABELS.wiki}
-                    checked={configDraft.tools.wiki.enabled}
-                    onCheckedChange={(enabled) =>
-                      updateToolToggle("wiki", enabled)
-                    }
-                  />
                 </div>
-                <div className="flex flex-col gap-4 border-t pt-4">
+              </TabsContent>
+
+              <TabsContent value="wiki" className="mt-0 flex flex-col gap-4">
+                <ToggleRow
+                  label={TOOL_LABELS.wiki}
+                  checked={configDraft.tools.wiki.enabled}
+                  onCheckedChange={(enabled) =>
+                    updateToolToggle("wiki", enabled)
+                  }
+                />
+                <p className="text-muted-foreground text-sm">
+                  Upload PDF or Word files so the agent can search them when
+                  helping you.
+                </p>
+                <input
+                  ref={wikiFileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file) return;
+                    void (async () => {
+                      props.setBusy(true);
+                      try {
+                        await uploadWikiDocument(file);
+                        toast.success(`Indexed “${file.name}”.`);
+                        await loadWikiDocuments();
+                      } catch (error) {
+                        toast.error((error as Error).message);
+                      } finally {
+                        props.setBusy(false);
+                      }
+                    })();
+                  }}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={props.busy || wikiListBusy}
+                    onClick={() => wikiFileInputRef.current?.click()}
+                  >
+                    <UploadIcon />
+                    Add PDF or DOCX
+                  </Button>
+                  {wikiListBusy && !wikiList ? (
+                    <span className="text-muted-foreground text-sm">
+                      Loading…
+                    </span>
+                  ) : wikiList ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center rounded-lg border bg-muted/40 p-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 shrink-0"
+                          disabled={wikiListBusy || wikiPage <= 1}
+                          aria-label="Previous page"
+                          onClick={() => setWikiPage((p) => Math.max(1, p - 1))}
+                        >
+                          <ChevronLeftIcon className="size-4" />
+                        </Button>
+                        <span className="min-w-[7.5rem] px-2 text-center text-sm tabular-nums">
+                          {wikiPage} / {wikiListBusy ? "…" : wikiTotalPages}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 shrink-0"
+                          disabled={wikiListBusy || wikiPage >= wikiTotalPages}
+                          aria-label="Next page"
+                          onClick={() => setWikiPage((p) => p + 1)}
+                        >
+                          <ChevronRightIcon className="size-4" />
+                        </Button>
+                      </div>
+                      <span className="text-muted-foreground text-sm tabular-nums">
+                        {wikiListBusy ? "…" : wikiDocCountLabel}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+                {!wikiListBusy && wikiList && wikiList.items.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
-                    Long-term memory uses a Chroma server for vector storage.
+                    No documents yet. Add a PDF or DOCX to get started.
                   </p>
-                  <ToggleRow
-                    label="Long-term memory"
-                    checked={configDraft.tools.ltm.enabled}
-                    onCheckedChange={(enabled) =>
-                      updateDraft((draft) => ({
-                        ...draft,
-                        tools: {
-                          ...draft.tools,
-                          ltm: { ...draft.tools.ltm, enabled },
-                        },
-                      }))
-                    }
-                  />
-                  {configDraft.tools.ltm.enabled
-                    ? (() => {
-                        const ltm: LtmConfig = configDraft.tools.ltm;
-                        return (
-                          <FieldGroup className="grid gap-3 md:grid-cols-2">
-                            <Field>
-                              <FieldLabel>Chroma URL</FieldLabel>
-                              <Input
-                                value={ltm.chroma.url}
-                                onChange={(event) =>
-                                  updateDraft((draft) => {
-                                    const prev: LtmConfig = draft.tools.ltm;
-                                    return {
-                                      ...draft,
-                                      tools: {
-                                        ...draft.tools,
-                                        ltm: {
-                                          ...prev,
-                                          chroma: {
-                                            ...prev.chroma,
-                                            url: event.target.value,
-                                          },
-                                        },
-                                      },
-                                    };
-                                  })
-                                }
-                              />
-                            </Field>
-                            <Field>
-                              <FieldLabel>Memory collection</FieldLabel>
-                              <Input
-                                value={ltm.chroma.collection.memory}
-                                onChange={(event) =>
-                                  updateDraft((draft) => {
-                                    const prev: LtmConfig = draft.tools.ltm;
-                                    return {
-                                      ...draft,
-                                      tools: {
-                                        ...draft.tools,
-                                        ltm: {
-                                          ...prev,
-                                          chroma: {
-                                            ...prev.chroma,
-                                            collection: {
-                                              memory: event.target.value,
-                                            },
-                                          },
-                                        },
-                                      },
-                                    };
-                                  })
-                                }
-                              />
-                            </Field>
-                          </FieldGroup>
-                        );
-                      })()
-                    : null}
-                </div>
+                ) : null}
+                {wikiList && wikiList.items.length > 0 ? (
+                  <div className="flex flex-col gap-2 rounded-md border">
+                    {wikiList.items.map((doc) => (
+                      <div
+                        key={doc.doc_id}
+                        className="flex flex-wrap items-center justify-between gap-3 border-b p-3 last:border-b-0"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {doc.file_name}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            {wikiDocKindLabel(
+                              doc.file_name,
+                              doc.original_mime_type,
+                            )}{" "}
+                            · {new Date(doc.updated_at_ms).toLocaleString()}
+                          </p>
+                        </div>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="ghost" type="button">
+                              <Trash2Icon />
+                              Remove
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-sm">
+                            <DialogHeader>
+                              <DialogTitle>Remove document?</DialogTitle>
+                              <DialogDescription>
+                                Remove <strong>{doc.file_name}</strong> from
+                                search. This cannot be undone.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                              <DialogClose asChild>
+                                <Button variant="outline">Cancel</Button>
+                              </DialogClose>
+                              <DialogClose asChild>
+                                <Button
+                                  variant="destructive"
+                                  onClick={() =>
+                                    void (async () => {
+                                      props.setBusy(true);
+                                      try {
+                                        await deleteWikiDocument(doc.doc_id);
+                                        toast.success(
+                                          `Removed “${doc.file_name}”.`,
+                                        );
+                                        await loadWikiDocuments();
+                                      } catch (error) {
+                                        toast.error((error as Error).message);
+                                      } finally {
+                                        props.setBusy(false);
+                                      }
+                                    })()
+                                  }
+                                >
+                                  Remove
+                                </Button>
+                              </DialogClose>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </TabsContent>
 
               <TabsContent value="agents" className="mt-0 flex flex-col gap-4">
