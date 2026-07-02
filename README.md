@@ -21,7 +21,7 @@ Web UI for **Hooman**: chat with your agent, manage MCP servers and skills, and 
 ## Requirements
 
 - **Node.js** ≥ 24 (see `engines` in [`package.json`](package.json))
-- **hoomanjs** as declared in [`package.json`](package.json) (this repo often uses `file:../hooman` for a matching local build; published installs use a semver range). Settings → LLM providers follow Hooman’s `LlmProvider` list. **Memory** and **wiki** (indexed PDF/DOCX, search-only tool) use **local SQLite** under `~/.hooman` (e.g. `memory.sqlite`, wiki `content.sqlite` under `~/.hooman/wiki`). PDF ingestion may require **Java 11+** on the host.
+- **hoomanjs** as declared in [`package.json`](package.json) (currently a published semver range, e.g. `^1.37.2`). Settings → LLM providers follow Hooman’s `LlmProvider` list (`anthropic`, `azure`, `bedrock`, `google`, `groq`, `minimax`, `moonshot`, `ollama`, `openai`, `openrouter`, `xai`). **Memory** is stored as JSONL files under `~/.hooman/memory` (override the base directory with the `HOOMAN_HOME` env var).
 
 ## Quick start
 
