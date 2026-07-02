@@ -230,6 +230,7 @@ export function ZeroShell() {
             onSetYolo={chat.setYolo}
             onToggleDaemon={data.toggleDaemon}
             onApprove={chat.approve}
+            onNewChat={chat.newChat}
             reasoningDisplay={data.config?.config.reasoning}
           />
         </TabsContent>

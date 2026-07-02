@@ -18,7 +18,7 @@ import type {
 import { applyChatEvent, newSessionId } from "./session-state";
 
 export function useChatSession() {
-  const [sessionId] = useState(newSessionId);
+  const [sessionId, setSessionId] = useState(newSessionId);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
@@ -129,6 +129,20 @@ export function useChatSession() {
     }
   }
 
+  async function newChat() {
+    if (session?.running) {
+      try {
+        await cancelChat(sessionId);
+      } catch {
+        /* ignore — starting a new chat regardless */
+      }
+    }
+    setInput("");
+    setAttachments([]);
+    setSession(null);
+    setSessionId(newSessionId());
+  }
+
   return {
     sessionId,
     input,
@@ -144,5 +158,6 @@ export function useChatSession() {
     setModel,
     setYolo,
     setSessionMode,
+    newChat,
   };
 }

@@ -11,6 +11,7 @@ import {
   SendIcon,
   SparklesIcon,
   SquareIcon,
+  SquarePenIcon,
   UploadIcon,
   WrenchIcon,
   XIcon,
@@ -29,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -93,6 +95,7 @@ export function ChatPanel(props: {
   onSetYolo: (enabled: boolean) => Promise<void>;
   onToggleDaemon: (enabled: boolean) => Promise<void>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
+  onNewChat: () => Promise<void>;
   reasoningDisplay?: "collapsed" | "full";
 }) {
   const lines = props.session?.lines ?? [];
@@ -110,6 +113,16 @@ export function ChatPanel(props: {
             <CardDescription>
               Talk to your agent. Channel messages can join the same queue.
             </CardDescription>
+            <CardAction>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void props.onNewChat()}
+              >
+                <SquarePenIcon />
+                New chat
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
             <div
