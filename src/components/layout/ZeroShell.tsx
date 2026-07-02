@@ -152,9 +152,9 @@ export function ZeroShell() {
     <Tabs
       value={activeTab}
       onValueChange={setActiveTab}
-      className="flex min-h-screen flex-col"
+      className="flex h-dvh min-h-0 flex-col overflow-hidden"
     >
-      <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
+      <header className="shrink-0 border-b bg-card/95 backdrop-blur">
         <div className="mx-auto grid w-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <Button
@@ -206,10 +206,10 @@ export function ZeroShell() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-4">
+      <main className="mx-auto flex w-full min-h-0 max-w-6xl flex-1 flex-col overflow-y-auto px-4 py-4">
         <TabsContent
           value="chat"
-          className="mt-0 flex h-[calc(100vh-6rem)] min-h-0 flex-col gap-4"
+          className="mt-0 flex min-h-0 flex-1 flex-col gap-4"
         >
           <ChatPanel
             session={chat.session}
