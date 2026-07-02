@@ -129,6 +129,14 @@ export type ChatSendRequest = {
   yolo?: boolean;
 };
 
+/** Lightweight, disk-backed listing entry for the session switcher (mirrors Hooman's resumable sessions). */
+export type ChatSessionSummary = {
+  sessionId: string;
+  title: string;
+  updatedAt: string;
+  messageCount: number;
+};
+
 export type UploadedAttachment = {
   name: string;
   originalName: string;

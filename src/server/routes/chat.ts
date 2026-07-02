@@ -18,7 +18,7 @@ export function registerChatRoutes(
     "/api/chat/stream",
     asyncRoute(async (req, res) => {
       const body = req.body as ChatSendRequest;
-      const session = deps.chats.get(body.sessionId);
+      const session = await deps.chats.get(body.sessionId);
       // Keep these headers for streamable HTTP/NDJSON clients.
       res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -32,7 +32,7 @@ export function registerChatRoutes(
     "/api/chat",
     asyncRoute(async (req, res) => {
       const body = req.body as ChatSendRequest;
-      const session = deps.chats.get(body.sessionId);
+      const session = await deps.chats.get(body.sessionId);
       res.status(410).json({
         error: "Use POST /api/chat/stream for streamable HTTP chat.",
         session: session.snapshot(),
@@ -40,31 +40,60 @@ export function registerChatRoutes(
     }),
   );
 
-  app.get("/api/chat/:sessionId", (req, res) => {
-    res.json({
-      session: deps.chats.get(routeParam(req, "sessionId")).snapshot(),
-    });
-  });
+  // Must be registered before `/api/chat/:sessionId` so "sessions" isn't
+  // captured as a session id.
+  app.get(
+    "/api/chat/sessions",
+    asyncRoute(async (_req, res) => {
+      res.json({ sessions: await deps.chats.list() });
+    }),
+  );
 
-  app.post("/api/chat/:sessionId/cancel", (req, res) => {
-    const session = deps.chats.get(routeParam(req, "sessionId"));
-    session.cancel();
-    res.json({ session: session.snapshot() });
-  });
+  app.delete(
+    "/api/chat/sessions/:sessionId",
+    asyncRoute(async (req, res) => {
+      await deps.chats.remove(routeParam(req, "sessionId"));
+      res.json({ sessions: await deps.chats.list() });
+    }),
+  );
 
-  app.post("/api/chat/:sessionId/approval", (req, res) => {
-    const decision = (req.body as { decision?: ApprovalDecision }).decision;
-    if (decision !== "allow" && decision !== "always" && decision !== "deny") {
-      res.status(400).json({ error: "Invalid approval decision." });
-      return;
-    }
-    const session = deps.chats.get(routeParam(req, "sessionId"));
-    if (!session.approve(decision)) {
-      res.status(404).json({ error: "No pending approval." });
-      return;
-    }
-    res.json({ session: session.snapshot() });
-  });
+  app.get(
+    "/api/chat/:sessionId",
+    asyncRoute(async (req, res) => {
+      const session = await deps.chats.get(routeParam(req, "sessionId"));
+      res.json({ session: session.snapshot() });
+    }),
+  );
+
+  app.post(
+    "/api/chat/:sessionId/cancel",
+    asyncRoute(async (req, res) => {
+      const session = await deps.chats.get(routeParam(req, "sessionId"));
+      session.cancel();
+      res.json({ session: session.snapshot() });
+    }),
+  );
+
+  app.post(
+    "/api/chat/:sessionId/approval",
+    asyncRoute(async (req, res) => {
+      const decision = (req.body as { decision?: ApprovalDecision }).decision;
+      if (
+        decision !== "allow" &&
+        decision !== "always" &&
+        decision !== "deny"
+      ) {
+        res.status(400).json({ error: "Invalid approval decision." });
+        return;
+      }
+      const session = await deps.chats.get(routeParam(req, "sessionId"));
+      if (!session.approve(decision)) {
+        res.status(404).json({ error: "No pending approval." });
+        return;
+      }
+      res.json({ session: session.snapshot() });
+    }),
+  );
 
   app.post(
     "/api/chat/:sessionId/model",
@@ -74,7 +103,7 @@ export function registerChatRoutes(
         res.status(400).json({ error: "Model name is required." });
         return;
       }
-      const session = deps.chats.get(routeParam(req, "sessionId"));
+      const session = await deps.chats.get(routeParam(req, "sessionId"));
       if (session.snapshot().running) {
         res.status(409).json({
           error: "Wait for the active turn to finish before switching models.",
@@ -86,16 +115,19 @@ export function registerChatRoutes(
     }),
   );
 
-  app.post("/api/chat/:sessionId/yolo", (req, res) => {
-    const body = req.body as { yolo?: unknown };
-    if (typeof body.yolo !== "boolean") {
-      res.status(400).json({ error: 'Body must include boolean "yolo".' });
-      return;
-    }
-    const session = deps.chats.get(routeParam(req, "sessionId"));
-    session.setYolo(body.yolo);
-    res.json({ session: session.snapshot() });
-  });
+  app.post(
+    "/api/chat/:sessionId/yolo",
+    asyncRoute(async (req, res) => {
+      const body = req.body as { yolo?: unknown };
+      if (typeof body.yolo !== "boolean") {
+        res.status(400).json({ error: 'Body must include boolean "yolo".' });
+        return;
+      }
+      const session = await deps.chats.get(routeParam(req, "sessionId"));
+      session.setYolo(body.yolo);
+      res.json({ session: session.snapshot() });
+    }),
+  );
 
   app.post(
     "/api/chat/:sessionId/reasoning-effort",
@@ -114,7 +146,7 @@ export function registerChatRoutes(
         });
         return;
       }
-      const session = deps.chats.get(routeParam(req, "sessionId"));
+      const session = await deps.chats.get(routeParam(req, "sessionId"));
       if (session.snapshot().running) {
         res.status(409).json({
           error:
@@ -136,23 +168,26 @@ export function registerChatRoutes(
     }),
   );
 
-  app.post("/api/chat/:sessionId/session-mode", (req, res) => {
-    const mode = (req.body as { mode?: unknown }).mode;
-    if (mode !== "default" && mode !== "plan" && mode !== "ask") {
-      res.status(400).json({
-        error: 'Body must include "mode": "default", "plan", or "ask".',
-      });
-      return;
-    }
-    const session = deps.chats.get(routeParam(req, "sessionId"));
-    if (session.snapshot().running) {
-      res.status(409).json({
-        error:
-          "Wait for the active turn to finish before switching session mode.",
-      });
-      return;
-    }
-    session.setSessionMode(mode as ChatSessionMode);
-    res.json({ session: session.snapshot() });
-  });
+  app.post(
+    "/api/chat/:sessionId/session-mode",
+    asyncRoute(async (req, res) => {
+      const mode = (req.body as { mode?: unknown }).mode;
+      if (mode !== "default" && mode !== "plan" && mode !== "ask") {
+        res.status(400).json({
+          error: 'Body must include "mode": "default", "plan", or "ask".',
+        });
+        return;
+      }
+      const session = await deps.chats.get(routeParam(req, "sessionId"));
+      if (session.snapshot().running) {
+        res.status(409).json({
+          error:
+            "Wait for the active turn to finish before switching session mode.",
+        });
+        return;
+      }
+      session.setSessionMode(mode as ChatSessionMode);
+      res.json({ session: session.snapshot() });
+    }),
+  );
 }

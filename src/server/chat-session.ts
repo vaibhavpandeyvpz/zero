@@ -23,6 +23,7 @@ import type {
   ChatSendRequest,
   ChatSessionMode,
   ChatSessionSnapshot,
+  ChatSessionSummary,
   ChatStreamEvent,
   ReasoningEffortLevel,
 } from "../client/types.js";
@@ -39,7 +40,17 @@ import {
   toToolResultText,
   type StreamEvent,
 } from "./agents/chat-stream-events.js";
+import {
+  deletePersistedSession,
+  listPersistedSessions,
+  loadPersistedSession,
+  savePersistedSession,
+  type PersistedChatSession,
+} from "./chat-transcript-store.js";
 import { createSessionConfig, type SessionConfig } from "./session-config.js";
+
+/** Persisted chat state is throttled to at most one write per this many ms, with a trailing flush. */
+const PERSIST_MIN_INTERVAL_MS = 500;
 
 type QueuedPrompt = {
   id: string;
@@ -127,11 +138,36 @@ export class ChatSession {
 
   private activeEmit: ((event: ChatStreamEvent) => void) | null = null;
 
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPersistAt = 0;
+
   public constructor(
     public readonly sessionId: string,
     private readonly worker: AgentWorker,
   ) {
     this.config = createSessionConfig();
+  }
+
+  /** Restores the UI transcript (and session preferences) persisted from a prior process, if any. */
+  public async hydrate(): Promise<void> {
+    const persisted = await loadPersistedSession(this.sessionId);
+    if (!persisted) {
+      return;
+    }
+    this.lines.push(...persisted.lines);
+    this.yolo = persisted.yolo;
+    this.preferredSessionMode = persisted.sessionMode;
+    this.todos = persisted.todos;
+    this.todosJson = persisted.todos ? JSON.stringify(persisted.todos) : "";
+    this.usage = persisted.usage;
+    if (persisted.model) {
+      await this.setModel(persisted.model).catch(() => undefined);
+    }
+    if (persisted.reasoningEffort) {
+      await this.setReasoningEffort(persisted.reasoningEffort).catch(
+        () => undefined,
+      );
+    }
   }
 
   public async stream(
@@ -244,6 +280,7 @@ export class ChatSession {
     if (this.agent) {
       setYoloEnabled(this.agent, enabled);
     }
+    this.schedulePersist();
   }
 
   public setSessionMode(mode: ChatSessionMode): void {
@@ -252,6 +289,7 @@ export class ChatSession {
       applyAgentSessionMode(this.agent, mode as SessionMode);
       applySessionMode(this.agent);
     }
+    this.schedulePersist();
   }
 
   private syncAgentPreferences(agent: WorkerAgent): void {
@@ -281,6 +319,7 @@ export class ChatSession {
     if (this.agent) {
       await this.rebuildAgent();
     }
+    this.schedulePersist();
   }
 
   /** Sets `reasoning.effort` on the active model's provider; `undefined` turns thinking off. */
@@ -312,6 +351,7 @@ export class ChatSession {
     if (this.agent) {
       await this.rebuildAgent();
     }
+    this.schedulePersist();
   }
 
   public async close(): Promise<void> {
@@ -324,6 +364,7 @@ export class ChatSession {
     await this.manager?.disconnect().catch(() => undefined);
     this.manager = null;
     this.agent = null;
+    await this.flushPersist();
   }
 
   private async runTurn(prompt: StreamJob): Promise<void> {
@@ -366,6 +407,7 @@ export class ChatSession {
         this.status = "error";
         this.activeJobId = null;
         this.activeEmit = null;
+        void this.flushPersist();
         prompt.emit({
           type: "turn.error",
           message: error instanceof Error ? error.message : String(error),
@@ -379,6 +421,7 @@ export class ChatSession {
         this.finishPendingTools();
         this.running = false;
         this.status = "ready";
+        void this.flushPersist();
         prompt.emit({
           type: "turn.completed",
           assistantLineId: assistantId,
@@ -589,6 +632,7 @@ export class ChatSession {
         latency: metrics.latencyMs ?? 0,
       };
       emit({ type: "usage.updated", usage: this.usage });
+      this.schedulePersist();
     }
   }
 
@@ -601,6 +645,7 @@ export class ChatSession {
       assistant.content += text;
       this.moveLineToEnd(assistant.id);
       emit({ type: "assistant.delta", lineId: assistant.id, text });
+      this.schedulePersist();
     }
   }
 
@@ -612,6 +657,7 @@ export class ChatSession {
     if (assistant) {
       assistant.reasoningContent = `${assistant.reasoningContent ?? ""}${text}`;
       emit({ type: "reasoning.delta", lineId: assistant.id, text });
+      this.schedulePersist();
     }
   }
 
@@ -619,6 +665,7 @@ export class ChatSession {
     const id = nowId();
     const nextLine = { id, ...line };
     this.lines.push(nextLine);
+    this.schedulePersist();
     return nextLine;
   }
 
@@ -626,7 +673,55 @@ export class ChatSession {
     const line = this.lines.find((item) => item.id === id);
     if (line) {
       Object.assign(line, patch);
+      this.schedulePersist();
     }
+  }
+
+  private toPersisted(): PersistedChatSession {
+    return {
+      sessionId: this.sessionId,
+      lines: [...this.lines],
+      yolo: this.yolo,
+      sessionMode: this.preferredSessionMode,
+      model: this.currentModel(),
+      reasoningEffort: this.currentReasoningEffort(),
+      todos: this.todos,
+      usage: this.usage,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Throttles disk writes to at most one per {@link PERSIST_MIN_INTERVAL_MS}, with a trailing flush.
+   * Sessions with no lines yet (e.g. merely opened in a browser tab but never messaged) are never
+   * written, so idle tabs don't litter the switcher with empty "Untitled session" entries. */
+  private schedulePersist(): void {
+    if (this.lines.length === 0) {
+      return;
+    }
+    const elapsed = Date.now() - this.lastPersistAt;
+    if (elapsed >= PERSIST_MIN_INTERVAL_MS) {
+      void this.flushPersist();
+      return;
+    }
+    if (this.persistTimer) {
+      return;
+    }
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void this.flushPersist();
+    }, PERSIST_MIN_INTERVAL_MS - elapsed);
+  }
+
+  private async flushPersist(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    this.lastPersistAt = Date.now();
+    if (this.lines.length === 0) {
+      return;
+    }
+    await savePersistedSession(this.toPersisted()).catch(() => undefined);
   }
 
   private currentAssistantLine(): ChatLine | undefined {
@@ -700,14 +795,31 @@ export class ChatSessions {
 
   public constructor(private readonly worker: AgentWorker) {}
 
-  public get(id?: string): ChatSession {
+  /** Returns the live session, hydrating its persisted transcript from disk the first time it's touched. */
+  public async get(id?: string): Promise<ChatSession> {
     const sessionId = id ?? crypto.randomUUID();
     let session = this.sessions.get(sessionId);
     if (!session) {
       session = new ChatSession(sessionId, this.worker);
       this.sessions.set(sessionId, session);
+      await session.hydrate();
     }
     return session;
+  }
+
+  /** Lists every session persisted on disk, newest first — powers the UI's session switcher. */
+  public async list(): Promise<ChatSessionSummary[]> {
+    return listPersistedSessions();
+  }
+
+  /** Closes the in-memory session (if loaded) and removes its persisted data from disk. */
+  public async remove(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      await session.close();
+      this.sessions.delete(sessionId);
+    }
+    await deletePersistedSession(sessionId);
   }
 
   public async closeAll(): Promise<void> {

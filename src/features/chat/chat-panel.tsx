@@ -23,6 +23,7 @@ import type {
   ChatLine,
   ChatSessionMode,
   ChatSessionSnapshot,
+  ChatSessionSummary,
   ReasoningEffortLevel,
   UploadedAttachment,
 } from "@/client/types";
@@ -57,6 +58,7 @@ import {
   parseMessageAttachments,
   type AttachmentPreview,
 } from "./attachments";
+import { SessionSwitcher } from "./session-switcher";
 import { useAutoScroll } from "./use-auto-scroll";
 import { useTextareaAutosize } from "./use-textarea-autosize";
 
@@ -114,6 +116,11 @@ export function ChatPanel(props: {
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
   onNewChat: () => Promise<void>;
   reasoningDisplay?: "collapsed" | "full";
+  sessions: ChatSessionSummary[];
+  loadingSessions: boolean;
+  onOpenSessions: () => void;
+  onSwitchSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => Promise<void>;
 }) {
   const lines = props.session?.lines ?? [];
   const todos = props.session?.todos;
@@ -130,7 +137,7 @@ export function ChatPanel(props: {
             <CardDescription>
               Talk to your agent. Channel messages can join the same queue.
             </CardDescription>
-            <CardAction>
+            <CardAction className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -139,6 +146,14 @@ export function ChatPanel(props: {
                 <SquarePenIcon />
                 New chat
               </Button>
+              <SessionSwitcher
+                sessions={props.sessions}
+                currentSessionId={props.session?.sessionId ?? ""}
+                loading={props.loadingSessions}
+                onOpen={props.onOpenSessions}
+                onSwitch={props.onSwitchSession}
+                onDelete={props.onDeleteSession}
+              />
             </CardAction>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">

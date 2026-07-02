@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   cancelChat,
   decideApproval,
+  deleteChatSession,
   getChatSession,
+  listChatSessions,
   setChatModel,
   setChatReasoningEffort,
   setChatSessionMode,
@@ -14,6 +16,7 @@ import {
 import type {
   ChatSessionMode,
   ChatSessionSnapshot,
+  ChatSessionSummary,
   ReasoningEffortLevel,
   UploadedAttachment,
 } from "@/client/types";
@@ -25,6 +28,20 @@ export function useChatSession() {
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [session, setSession] = useState<ChatSessionSnapshot | null>(null);
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
+  const refreshSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    try {
+      const data = await listChatSessions();
+      setSessions(data.sessions);
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, []);
 
   useEffect(() => {
     void getChatSession(sessionId)
@@ -33,6 +50,10 @@ export function useChatSession() {
         toast.error((error as Error).message);
       });
   }, [sessionId]);
+
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
 
   async function submitMessage() {
     const text = input.trim();
@@ -60,6 +81,9 @@ export function useChatSession() {
           setSession((current) => applyChatEvent(current, sessionId, event));
         },
       );
+      // The session's title (derived from the first message) and updated
+      // timestamp may have changed — refresh the switcher list.
+      void refreshSessions();
     } catch (error) {
       setInput(text);
       setAttachments(previous);
@@ -141,17 +165,32 @@ export function useChatSession() {
   }
 
   async function newChat() {
-    if (session?.running) {
-      try {
-        await cancelChat(sessionId);
-      } catch {
-        /* ignore — starting a new chat regardless */
-      }
-    }
     setInput("");
     setAttachments([]);
     setSession(null);
     setSessionId(newSessionId());
+  }
+
+  /** Switches the active chat to a previously persisted session (a "resume", à la Hooman). Any turn
+   * still running on the session being left behind keeps going in the background. */
+  function switchSession(targetSessionId: string) {
+    if (targetSessionId === sessionId) return;
+    setInput("");
+    setAttachments([]);
+    setSession(null);
+    setSessionId(targetSessionId);
+  }
+
+  async function deleteSession(targetSessionId: string) {
+    try {
+      const data = await deleteChatSession(targetSessionId);
+      setSessions(data.sessions);
+      if (targetSessionId === sessionId) {
+        await newChat();
+      }
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
   }
 
   return {
@@ -161,6 +200,9 @@ export function useChatSession() {
     attachments,
     uploadingAttachments,
     session,
+    sessions,
+    loadingSessions,
+    refreshSessions,
     submitMessage,
     addAttachmentFiles,
     removeAttachment,
@@ -171,5 +213,7 @@ export function useChatSession() {
     setSessionMode,
     setReasoningEffort,
     newChat,
+    switchSession,
+    deleteSession,
   };
 }

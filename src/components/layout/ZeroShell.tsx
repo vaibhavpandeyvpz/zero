@@ -234,6 +234,11 @@ export function ZeroShell() {
             onApprove={chat.approve}
             onNewChat={chat.newChat}
             reasoningDisplay={data.config?.config.reasoning}
+            sessions={chat.sessions}
+            loadingSessions={chat.loadingSessions}
+            onOpenSessions={chat.refreshSessions}
+            onSwitchSession={chat.switchSession}
+            onDeleteSession={chat.deleteSession}
           />
         </TabsContent>
 

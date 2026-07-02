@@ -8,6 +8,7 @@ import type {
   ChatSendRequest,
   ChatSessionMode,
   ChatSessionSnapshot,
+  ChatSessionSummary,
   ChatStreamEvent,
   HealthResponse,
   McpServerView,
@@ -141,6 +142,22 @@ export function getChatSession(
 ): Promise<{ session: ChatSessionSnapshot }> {
   return request<{ session: ChatSessionSnapshot }>(
     `/api/chat/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+/** Lists every persisted chat session, newest first — used to resume a prior conversation. */
+export function listChatSessions(): Promise<{
+  sessions: ChatSessionSummary[];
+}> {
+  return request<{ sessions: ChatSessionSummary[] }>("/api/chat/sessions");
+}
+
+export function deleteChatSession(
+  sessionId: string,
+): Promise<{ sessions: ChatSessionSummary[] }> {
+  return request<{ sessions: ChatSessionSummary[] }>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
   );
 }
 
