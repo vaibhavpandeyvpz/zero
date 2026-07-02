@@ -19,7 +19,6 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
-  ChannelModeStatus,
   ChatLine,
   ChatSessionMode,
   ChatSessionSnapshot,
@@ -27,7 +26,6 @@ import type {
   ReasoningEffortLevel,
   UploadedAttachment,
 } from "@/client/types";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,7 +36,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -48,7 +45,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { REASONING_EFFORT_OPTIONS } from "@/features/settings/hooman-llm-providers";
@@ -102,7 +98,6 @@ export function ChatPanel(props: {
   uploadingAttachments: boolean;
   onAddAttachments: (files: File[]) => Promise<void>;
   onRemoveAttachment: (name: string) => void;
-  daemon?: ChannelModeStatus;
   onSubmit: () => Promise<void>;
   onCancel: () => Promise<void>;
   onSetModel: (name: string) => Promise<void>;
@@ -112,7 +107,6 @@ export function ChatPanel(props: {
   onSetYolo: (enabled: boolean) => Promise<void>;
   reasoningEffort?: ReasoningEffortLevel;
   onSetReasoningEffort: (effort: ReasoningEffortLevel | null) => Promise<void>;
-  onToggleDaemon: (enabled: boolean) => Promise<void>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
   onNewChat: () => Promise<void>;
   reasoningDisplay?: "collapsed" | "full";
@@ -129,298 +123,250 @@ export function ChatPanel(props: {
   const textareaRef = useTextareaAutosize(props.input);
 
   return (
-    <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="flex min-h-0 flex-col gap-4">
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0">
-          <CardHeader>
-            <CardTitle>Chat</CardTitle>
-            <CardDescription>
-              Talk to your agent. Channel messages can join the same queue.
-            </CardDescription>
-            <CardAction className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void props.onNewChat()}
-              >
-                <SquarePenIcon />
-                New chat
-              </Button>
-              <SessionSwitcher
-                sessions={props.sessions}
-                currentSessionId={props.session?.sessionId ?? ""}
-                loading={props.loadingSessions}
-                onOpen={props.onOpenSessions}
-                onSwitch={props.onSwitchSession}
-                onDelete={props.onDeleteSession}
-              />
-            </CardAction>
-          </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
-            <div
-              ref={scrollRef}
-              className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6"
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0">
+        <CardHeader>
+          <CardTitle>Chat</CardTitle>
+          <CardDescription>
+            Talk to your agent. Channel messages can join the same queue.
+          </CardDescription>
+          <CardAction className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void props.onNewChat()}
             >
-              {lines.length === 0 ? (
-                <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-                  <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
-                    <SparklesIcon className="size-5" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">
-                      Start a conversation
-                    </p>
-                    <p className="text-sm">
-                      Ask your agent to plan, research, or use connected tools.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
-                  {lines.map((line) => (
-                    <ChatBubble
-                      key={line.id}
-                      line={line}
-                      agentName={props.agentName}
-                      reasoningDisplay={props.reasoningDisplay ?? "collapsed"}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {props.session?.running &&
-            todos?.visible &&
-            todos.todos.length > 0 ? (
-              <div className="border-t bg-muted/30 p-3 sm:p-4">
-                <TodoPanel todos={todos.todos} />
-              </div>
-            ) : null}
-
-            {props.session?.approvals ? (
-              <div className="border-t bg-muted/30 p-3 sm:p-4">
-                <ApprovalCard
-                  request={props.session.approvals}
-                  onApprove={props.onApprove}
-                />
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card className="shrink-0 py-0">
-          <CardContent className="flex flex-col gap-2 p-3">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2">
-              <Textarea
-                ref={textareaRef}
-                rows={1}
-                className="max-h-14 min-h-9 resize-none overflow-y-hidden"
-                value={props.input}
-                placeholder={
-                  props.session?.running
-                    ? "Type a message to steer the running turn — press Enter to send now"
-                    : "Type a message"
-                }
-                onChange={(event) => props.setInput(event.target.value)}
-                onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
-                  const files = filesFromClipboard(event.clipboardData);
-                  if (files.length === 0) {
-                    return;
-                  }
-                  event.preventDefault();
-                  if (props.uploadingAttachments) {
-                    return;
-                  }
-                  void props.onAddAttachments(files);
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" &&
-                    !event.shiftKey &&
-                    !event.metaKey
-                  ) {
-                    event.preventDefault();
-                    void props.onSubmit();
-                  }
-                }}
-              />
-              <Button
-                aria-label={
-                  props.session?.running
-                    ? "Stop current turn"
-                    : props.uploadingAttachments
-                      ? "Uploading"
-                      : "Send message"
-                }
-                disabled={!props.session?.running && !canSend}
-                size="icon"
-                className="h-full min-h-9 max-h-14 w-auto shrink-0 aspect-square"
-                variant={props.session?.running ? "outline" : "default"}
-                onClick={
-                  props.session?.running ? props.onCancel : props.onSubmit
-                }
-              >
-                {props.session?.running ? (
-                  <SquareIcon className="size-4" />
-                ) : props.uploadingAttachments ? (
-                  <Loader2Icon className="size-4 animate-spin" />
-                ) : (
-                  <SendIcon className="size-4" />
-                )}
-              </Button>
-            </div>
-            <AttachmentDropzone
-              attachments={props.attachments}
-              uploading={props.uploadingAttachments}
-              onAdd={props.onAddAttachments}
-              onRemove={props.onRemoveAttachment}
+              <SquarePenIcon />
+              New chat
+            </Button>
+            <SessionSwitcher
+              sessions={props.sessions}
+              currentSessionId={props.session?.sessionId ?? ""}
+              loading={props.loadingSessions}
+              onOpen={props.onOpenSessions}
+              onSwitch={props.onSwitchSession}
+              onDelete={props.onDeleteSession}
             />
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {props.session?.models.length ? (
-                  <Select
-                    value={props.session.model}
-                    disabled={props.session.running}
-                    onValueChange={(value) => void props.onSetModel(value)}
-                  >
-                    <SelectTrigger className="max-w-[28rem]">
-                      <SelectValue placeholder="Choose model">
-                        {modelSelectTriggerLabel(
-                          props.session.models,
-                          props.session.model,
-                        )}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {props.session.models.map((entry) => (
-                          <SelectItem key={entry.name} value={entry.name}>
-                            {entry.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                ) : null}
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6"
+          >
+            {lines.length === 0 ? (
+              <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+                <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
+                  <SparklesIcon className="size-5" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">
+                    Start a conversation
+                  </p>
+                  <p className="text-sm">
+                    Ask your agent to plan, research, or use connected tools.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
+                {lines.map((line) => (
+                  <ChatBubble
+                    key={line.id}
+                    line={line}
+                    agentName={props.agentName}
+                    reasoningDisplay={props.reasoningDisplay ?? "collapsed"}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {props.session?.running &&
+          todos?.visible &&
+          todos.todos.length > 0 ? (
+            <div className="border-t bg-muted/30 p-3 sm:p-4">
+              <TodoPanel todos={todos.todos} />
+            </div>
+          ) : null}
+
+          {props.session?.approvals ? (
+            <div className="border-t bg-muted/30 p-3 sm:p-4">
+              <ApprovalCard
+                request={props.session.approvals}
+                onApprove={props.onApprove}
+              />
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="shrink-0 py-0">
+        <CardContent className="flex flex-col gap-2 p-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2">
+            <Textarea
+              ref={textareaRef}
+              rows={1}
+              className="max-h-14 min-h-9 resize-none overflow-y-hidden"
+              value={props.input}
+              placeholder={
+                props.session?.running
+                  ? "Type a message to steer the running turn — press Enter to send now"
+                  : "Type a message"
+              }
+              onChange={(event) => props.setInput(event.target.value)}
+              onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+                const files = filesFromClipboard(event.clipboardData);
+                if (files.length === 0) {
+                  return;
+                }
+                event.preventDefault();
+                if (props.uploadingAttachments) {
+                  return;
+                }
+                void props.onAddAttachments(files);
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.metaKey
+                ) {
+                  event.preventDefault();
+                  void props.onSubmit();
+                }
+              }}
+            />
+            <Button
+              aria-label={
+                props.session?.running
+                  ? "Stop current turn"
+                  : props.uploadingAttachments
+                    ? "Uploading"
+                    : "Send message"
+              }
+              disabled={!props.session?.running && !canSend}
+              size="icon"
+              className="h-full min-h-9 max-h-14 w-auto shrink-0 aspect-square"
+              variant={props.session?.running ? "outline" : "default"}
+              onClick={props.session?.running ? props.onCancel : props.onSubmit}
+            >
+              {props.session?.running ? (
+                <SquareIcon className="size-4" />
+              ) : props.uploadingAttachments ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <SendIcon className="size-4" />
+              )}
+            </Button>
+          </div>
+          <AttachmentDropzone
+            attachments={props.attachments}
+            uploading={props.uploadingAttachments}
+            onAdd={props.onAddAttachments}
+            onRemove={props.onRemoveAttachment}
+          />
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {props.session?.models.length ? (
                 <Select
-                  value={
-                    props.reasoningEffort ?? REASONING_EFFORT_SELECT_VALUE_OFF
-                  }
-                  disabled={!props.session || props.session.running}
-                  onValueChange={(value) =>
-                    void props.onSetReasoningEffort(
-                      value === REASONING_EFFORT_SELECT_VALUE_OFF
-                        ? null
-                        : (value as ReasoningEffortLevel),
-                    )
-                  }
+                  value={props.session.model}
+                  disabled={props.session.running}
+                  onValueChange={(value) => void props.onSetModel(value)}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Effort">
-                      {effortSelectTriggerLabel(props.reasoningEffort)}
+                  <SelectTrigger className="max-w-[28rem]">
+                    <SelectValue placeholder="Choose model">
+                      {modelSelectTriggerLabel(
+                        props.session.models,
+                        props.session.model,
+                      )}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value={REASONING_EFFORT_SELECT_VALUE_OFF}>
-                        Off
-                      </SelectItem>
-                      {REASONING_EFFORT_OPTIONS.map((level) => (
-                        <SelectItem key={level} value={level}>
-                          {REASONING_EFFORT_LABELS[level]}
+                      {props.session.models.map((entry) => (
+                        <SelectItem key={entry.name} value={entry.name}>
+                          {entry.name}
                         </SelectItem>
                       ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
-                <Select
-                  value={props.sessionMode}
-                  disabled={!props.session || props.session.running}
-                  onValueChange={(value) =>
-                    void props.onSetSessionMode(value as ChatSessionMode)
-                  }
-                >
-                  <SelectTrigger className="min-w-[9rem]">
-                    <SelectValue placeholder="Mode">
-                      {modeSelectTriggerLabel(props.sessionMode)}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="agent">Agent</SelectItem>
-                      <SelectItem value="plan">Plan</SelectItem>
-                      <SelectItem value="ask">Ask</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={props.yolo ? "on" : "off"}
-                  disabled={!props.session || props.session.running}
-                  onValueChange={(value) =>
-                    void props.onSetYolo(value === "on")
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Yolo">
-                      {props.yolo ? "Yolo · On" : "Yolo · Off"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="off">Off</SelectItem>
-                      <SelectItem value="on">On</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="min-w-2 flex-1" aria-hidden />
-              <div className="shrink-0">
-                <ChatStatusBlip status={props.session?.status ?? "ready"} />
-              </div>
+              ) : null}
+              <Select
+                value={
+                  props.reasoningEffort ?? REASONING_EFFORT_SELECT_VALUE_OFF
+                }
+                disabled={!props.session || props.session.running}
+                onValueChange={(value) =>
+                  void props.onSetReasoningEffort(
+                    value === REASONING_EFFORT_SELECT_VALUE_OFF
+                      ? null
+                      : (value as ReasoningEffortLevel),
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Effort">
+                    {effortSelectTriggerLabel(props.reasoningEffort)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value={REASONING_EFFORT_SELECT_VALUE_OFF}>
+                      Off
+                    </SelectItem>
+                    {REASONING_EFFORT_OPTIONS.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {REASONING_EFFORT_LABELS[level]}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Select
+                value={props.sessionMode}
+                disabled={!props.session || props.session.running}
+                onValueChange={(value) =>
+                  void props.onSetSessionMode(value as ChatSessionMode)
+                }
+              >
+                <SelectTrigger className="min-w-[9rem]">
+                  <SelectValue placeholder="Mode">
+                    {modeSelectTriggerLabel(props.sessionMode)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="agent">Agent</SelectItem>
+                    <SelectItem value="plan">Plan</SelectItem>
+                    <SelectItem value="ask">Ask</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Select
+                value={props.yolo ? "on" : "off"}
+                disabled={!props.session || props.session.running}
+                onValueChange={(value) => void props.onSetYolo(value === "on")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Yolo">
+                    {props.yolo ? "Yolo · On" : "Yolo · Off"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="off">Off</SelectItem>
+                    <SelectItem value="on">On</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="h-fit">
-        <CardHeader>
-          <CardTitle>Inputs</CardTitle>
-          <CardDescription>
-            Channel messages join the same agent queue as chat.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium">Channels</p>
-              <p className="text-xs text-muted-foreground">
-                Receive events from channels.
-              </p>
+            <div className="min-w-2 flex-1" aria-hidden />
+            <div className="shrink-0">
+              <ChatStatusBlip status={props.session?.status ?? "ready"} />
             </div>
-            <Switch
-              checked={props.daemon?.enabled ?? false}
-              onCheckedChange={(checked) => void props.onToggleDaemon(checked)}
-            />
           </div>
-          <Separator />
-          <StatusRow
-            label="Pending messages"
-            value={String(props.daemon?.queued ?? 0)}
-          />
-          <StatusRow
-            label="Channel messages handled"
-            value={String(props.daemon?.processed ?? 0)}
-          />
-          <StatusRow
-            label="Subscriptions"
-            value={String(props.daemon?.subscriptions.length ?? 0)}
-          />
-          {props.daemon?.lastError ? (
-            <Alert variant="destructive">
-              <AlertTitle>Channel error</AlertTitle>
-              <AlertDescription>{props.daemon.lastError}</AlertDescription>
-            </Alert>
-          ) : null}
         </CardContent>
       </Card>
     </div>
@@ -985,14 +931,5 @@ function ApprovalCard(props: {
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function StatusRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
   );
 }

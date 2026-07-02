@@ -35,6 +35,7 @@ import {
 } from "@/client/api";
 import type {
   AllowlistRule,
+  ChannelModeStatus,
   McpServerView,
   ServerAuthStatus,
   SkillSearchResponse,
@@ -107,6 +108,15 @@ import {
 import { useSkillInstallFlow } from "@/features/settings/use-skill-install-flow";
 import { useZeroData } from "@/features/app/use-zero-data";
 import { useChatSession } from "@/features/chat/use-chat-session";
+
+function StatusRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
 
 function mcpAuthBadgeVariant(
   status: ServerAuthStatus["status"],
@@ -220,7 +230,6 @@ export function ZeroShell() {
             uploadingAttachments={chat.uploadingAttachments}
             onAddAttachments={chat.addAttachmentFiles}
             onRemoveAttachment={chat.removeAttachment}
-            daemon={daemon}
             onSubmit={chat.submitMessage}
             onCancel={chat.cancel}
             onSetModel={chat.setModel}
@@ -230,7 +239,6 @@ export function ZeroShell() {
             onSetYolo={chat.setYolo}
             reasoningEffort={chat.session?.reasoningEffort}
             onSetReasoningEffort={chat.setReasoningEffort}
-            onToggleDaemon={data.toggleDaemon}
             onApprove={chat.approve}
             onNewChat={chat.newChat}
             reasoningDisplay={data.config?.config.reasoning}
@@ -255,6 +263,8 @@ export function ZeroShell() {
             setSkills={data.setSkills}
             setSkillResults={setSkillResults}
             refreshAll={data.refreshAll}
+            daemon={daemon}
+            onToggleDaemon={data.toggleDaemon}
           />
         </TabsContent>
       </main>
@@ -274,6 +284,8 @@ function SettingsPanel(props: {
   setSkills: (skills: SkillsResponse["skills"]) => void;
   setSkillResults: (results: SkillSearchResponse["results"]) => void;
   refreshAll: () => Promise<void>;
+  daemon?: ChannelModeStatus;
+  onToggleDaemon: (enabled: boolean) => Promise<void>;
 }) {
   const defaultSessionsCheckboxId = useId();
   const mcpOauthCheckboxId = useId();
@@ -439,6 +451,7 @@ function SettingsPanel(props: {
                   <TabsTrigger value="agents">Subagents</TabsTrigger>
                   <TabsTrigger value="compaction">Compaction</TabsTrigger>
                   <TabsTrigger value="approvals">Approvals</TabsTrigger>
+                  <TabsTrigger value="channels">Channels</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -1129,6 +1142,45 @@ function SettingsPanel(props: {
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent
+                value="channels"
+                className="mt-0 flex flex-col gap-4"
+              >
+                <p className="text-muted-foreground text-sm">
+                  Channel messages join the same agent queue as chat.
+                </p>
+                <ToggleRow
+                  label="Channels"
+                  description="Receive events from channels."
+                  checked={props.daemon?.enabled ?? false}
+                  onCheckedChange={(checked) =>
+                    void props.onToggleDaemon(checked)
+                  }
+                />
+                <div className="flex flex-col gap-2">
+                  <StatusRow
+                    label="Pending messages"
+                    value={String(props.daemon?.queued ?? 0)}
+                  />
+                  <StatusRow
+                    label="Channel messages handled"
+                    value={String(props.daemon?.processed ?? 0)}
+                  />
+                  <StatusRow
+                    label="Subscriptions"
+                    value={String(props.daemon?.subscriptions.length ?? 0)}
+                  />
+                </div>
+                {props.daemon?.lastError ? (
+                  <Alert variant="destructive">
+                    <AlertTitle>Channel error</AlertTitle>
+                    <AlertDescription>
+                      {props.daemon.lastError}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
               </TabsContent>
             </Tabs>
           ) : null}
