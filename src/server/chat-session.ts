@@ -3,9 +3,11 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Message, TextBlock, type MessageData } from "@strands-agents/sdk";
 import {
+  ChatTurnSteeringController,
   applySessionMode,
   attachmentPathsToPromptBlocks,
   bootstrap,
+  createChatTurnSteeringIntervention,
   getModeState,
   getTodoViewState,
   setSessionMode as applyAgentSessionMode,
@@ -29,7 +31,7 @@ import {
   type AgentWorkerInput,
   type WorkerAgent,
 } from "./agent-worker.js";
-import { ApprovalController } from "./approval.js";
+import { ApprovalController, createApprovalIntervention } from "./approval.js";
 import {
   getToolUseId,
   stringifyUnknown,
@@ -37,10 +39,6 @@ import {
   type StreamEvent,
 } from "./agents/chat-stream-events.js";
 import { createSessionConfig, type SessionConfig } from "./session-config.js";
-import {
-  ChatTurnSteeringController,
-  createChatTurnSteeringIntervention,
-} from "./steering.js";
 
 type QueuedPrompt = {
   id: string;
@@ -287,7 +285,6 @@ export class ChatSession {
       userId: this.sessionId,
       input: await this.toStreamInput(prompt),
       yolo: this.yolo,
-      approval: this.approval,
       onStart: () => {
         const index = this.queued.findIndex((item) => item.id === prompt.id);
         if (index >= 0) {
@@ -350,7 +347,10 @@ export class ChatSession {
         userId: this.sessionId,
         yolo: this.yolo,
         mode: this.preferredSessionMode as SessionMode,
-        interventions: [createChatTurnSteeringIntervention(this.steering)],
+        interventions: [
+          createApprovalIntervention(this.approval),
+          createChatTurnSteeringIntervention(this.steering),
+        ],
       },
       false,
       this.config,
@@ -378,7 +378,10 @@ export class ChatSession {
         userId: this.sessionId,
         yolo: this.yolo,
         mode: this.preferredSessionMode as SessionMode,
-        interventions: [createChatTurnSteeringIntervention(this.steering)],
+        interventions: [
+          createApprovalIntervention(this.approval),
+          createChatTurnSteeringIntervention(this.steering),
+        ],
       },
       false,
       this.config,

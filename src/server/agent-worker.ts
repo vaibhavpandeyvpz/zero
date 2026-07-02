@@ -1,16 +1,11 @@
 import fastq from "fastq";
-import { BeforeToolCallEvent } from "@strands-agents/sdk";
 import {
   bootstrap,
   consumeExitRequest,
   setYoloEnabled,
   type McpManager,
 } from "hoomanjs";
-import {
-  createApprovalHandler,
-  createChannelApprovalHandler,
-} from "./approval.js";
-import type { ApprovalController } from "./approval.js";
+import { createChannelApprovalIntervention } from "./approval.js";
 
 export type WorkerAgent = Awaited<ReturnType<typeof bootstrap>>["agent"];
 export type AgentWorkerInput = Parameters<WorkerAgent["stream"]>[0];
@@ -29,7 +24,6 @@ export type AgentWorkerJob = {
   origin?: Record<string, unknown>;
   input: AgentWorkerInput;
   yolo?: boolean;
-  approval?: ApprovalController;
   onStart?: (agent: WorkerAgent) => void;
   onStreamEvent?: (event: unknown, agent: WorkerAgent) => void;
   onSuccess?: (agent: WorkerAgent) => void;
@@ -116,7 +110,15 @@ export class AgentWorker {
     const {
       agent,
       mcp: { manager },
-    } = await bootstrap("daemon", {}, false);
+    } = await bootstrap(
+      "daemon",
+      {
+        createInterventions: ({ manager }) => [
+          createChannelApprovalIntervention(manager),
+        ],
+      },
+      false,
+    );
     this.defaultAgent = agent;
     this.defaultManager = manager;
     return agent;
@@ -140,16 +142,9 @@ export class AgentWorker {
   private async run(job: AgentWorkerJob): Promise<void> {
     this.activeJob = job;
     let agent: WorkerAgent | null = null;
-    let cleanupHook: (() => void) | undefined;
     try {
       agent = job.agent ?? (await this.ensureDefaultAgent());
       this.activeAgent = agent;
-      cleanupHook = agent.addHook(
-        BeforeToolCallEvent as never,
-        (job.source === "channel" && this.defaultManager
-          ? createChannelApprovalHandler(this.defaultManager)
-          : createApprovalHandler(job.approval)) as never,
-      );
       this.applyJobState(agent, job);
       job.onStart?.(agent);
       for await (const event of agent.stream(job.input)) {
@@ -159,7 +154,6 @@ export class AgentWorker {
     } catch (error) {
       job.onError?.(error);
     } finally {
-      cleanupHook?.();
       if (agent) {
         job.onComplete?.(agent);
         if (!job.agent && consumeExitRequest(agent)) {
