@@ -164,21 +164,21 @@ export function ZeroShell() {
       onValueChange={setActiveTab}
       className="flex h-dvh min-h-0 flex-col overflow-hidden"
     >
-      <header className="shrink-0 border-b bg-card/95 backdrop-blur">
-        <div className="mx-auto grid w-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
+      <header className="shrink-0 border-b bg-card/95 backdrop-blur [padding-left:env(safe-area-inset-left)] [padding-right:env(safe-area-inset-right)] [padding-top:env(safe-area-inset-top)]">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <Button
               size="icon-lg"
               type="button"
               aria-label="Go to chat"
               onClick={() => setActiveTab("chat")}
-              className="rounded-xl bg-gradient-to-br from-violet-500 via-purple-600 to-teal-500 text-white shadow-sm ring-1 ring-white/25 hover:brightness-105 active:brightness-95 dark:from-violet-600 dark:via-purple-700 dark:to-teal-600"
+              className="shrink-0 rounded-xl bg-gradient-to-br from-violet-500 via-purple-600 to-teal-500 text-white shadow-sm ring-1 ring-white/25 hover:brightness-105 active:brightness-95 dark:from-violet-600 dark:via-purple-700 dark:to-teal-600"
             >
               <BotIcon />
             </Button>
             <div className="min-w-0">
               <h1 className="truncate font-semibold leading-none">Zero</h1>
-              <p className="truncate text-sm text-muted-foreground">
+              <p className="hidden truncate text-sm text-muted-foreground sm:block">
                 Powered by{" "}
                 <a
                   className="underline-offset-4 hover:underline"
@@ -192,31 +192,32 @@ export function ZeroShell() {
             </div>
           </div>
 
-          <TabsList>
-            <TabsTrigger value="chat">
-              <SparklesIcon />
-              Chat
-            </TabsTrigger>
-            <TabsTrigger value="settings">
-              <SettingsIcon />
-              Settings
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex shrink-0 items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="chat">
+                <SparklesIcon />
+                <span className="hidden sm:inline">Chat</span>
+              </TabsTrigger>
+              <TabsTrigger value="settings">
+                <SettingsIcon />
+                <span className="hidden sm:inline">Settings</span>
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="flex items-center justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
+              aria-label="Toggle theme"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
               {mounted && theme === "dark" ? <SunIcon /> : <MoonIcon />}
-              Theme
+              <span className="hidden sm:inline">Theme</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex w-full min-h-0 max-w-6xl flex-1 flex-col overflow-y-auto px-4 py-4">
+      <main className="mx-auto flex w-full min-h-0 max-w-6xl flex-1 flex-col overflow-y-auto px-3 pt-3 sm:px-4 sm:pt-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] sm:[padding-bottom:max(1rem,env(safe-area-inset-bottom))]">
         <TabsContent
           value="chat"
           className="mt-0 flex min-h-0 flex-1 flex-col gap-4"
@@ -1281,9 +1282,9 @@ function SettingsPanel(props: {
               props.mcp.map((server) => (
                 <div
                   key={server.name}
-                  className="flex items-center justify-between gap-3 rounded-md border p-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium">{server.name}</p>
                       <Badge variant="secondary">
@@ -1308,7 +1309,7 @@ function SettingsPanel(props: {
                       {server.summary}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     {server.transport.type !== "stdio" &&
                     server.transport.oauth?.enabled ? (
                       mcpAuthStatusFor(server.name)?.status ===
@@ -1639,9 +1640,9 @@ function SettingsPanel(props: {
               props.skills.map((skill) => (
                 <div
                   key={skill.path}
-                  className="flex items-center justify-between gap-3 rounded-md border p-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium">{skill.name}</p>
                     {skill.description ? (
                       <p className="text-xs text-muted-foreground">
@@ -1736,7 +1737,7 @@ function SettingsPanel(props: {
                       {props.skillResults.map((result) => (
                         <div
                           key={result.slug || result.source}
-                          className="flex items-center justify-between gap-3 rounded-md border p-3"
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
                         >
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">

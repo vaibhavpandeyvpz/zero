@@ -70,7 +70,8 @@ export function SessionSwitcher(props: {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <HistoryIcon />
-          Resume chat
+          <span className="sm:hidden">Resume</span>
+          <span className="hidden sm:inline">Resume chat</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

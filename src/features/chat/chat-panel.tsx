@@ -30,7 +30,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -77,8 +76,12 @@ const REASONING_EFFORT_LABELS: Record<ReasoningEffortLevel, string> = {
   high: "High",
 };
 
+function effortSelectCompactLabel(effort: ReasoningEffortLevel | undefined) {
+  return effort ? REASONING_EFFORT_LABELS[effort] : "Off";
+}
+
 function effortSelectTriggerLabel(effort: ReasoningEffortLevel | undefined) {
-  return `Effort · ${effort ? REASONING_EFFORT_LABELS[effort] : "Off"}`;
+  return `Effort · ${effortSelectCompactLabel(effort)}`;
 }
 
 function modelSelectTriggerLabel(
@@ -87,6 +90,11 @@ function modelSelectTriggerLabel(
 ): string | null {
   const entry = models.find((m) => m.name === currentName);
   return entry?.name ?? null;
+}
+
+/** Hard character cap for narrow screens where the full model name won't fit. */
+function truncateLabel(label: string, max: number): string {
+  return label.length > max ? `${label.slice(0, max)}…` : label;
 }
 
 export function ChatPanel(props: {
@@ -126,28 +134,36 @@ export function ChatPanel(props: {
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0">
         <CardHeader>
-          <CardTitle>Chat</CardTitle>
-          <CardDescription>
-            Talk to your agent. Channel messages can join the same queue.
-          </CardDescription>
-          <CardAction className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void props.onNewChat()}
-            >
-              <SquarePenIcon />
-              New chat
-            </Button>
-            <SessionSwitcher
-              sessions={props.sessions}
-              currentSessionId={props.session?.sessionId ?? ""}
-              loading={props.loadingSessions}
-              onOpen={props.onOpenSessions}
-              onSwitch={props.onSwitchSession}
-              onDelete={props.onDeleteSession}
-            />
-          </CardAction>
+          <div className="flex flex-row items-start justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle>Chat</CardTitle>
+              <CardDescription className="hidden sm:block">
+                Talk to your agent. Channel messages can join the same queue.
+              </CardDescription>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <div className="sm:hidden">
+                <ChatStatusBlip status={props.session?.status ?? "ready"} />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void props.onNewChat()}
+              >
+                <SquarePenIcon />
+                <span className="sm:hidden">New</span>
+                <span className="hidden sm:inline">New chat</span>
+              </Button>
+              <SessionSwitcher
+                sessions={props.sessions}
+                currentSessionId={props.session?.sessionId ?? ""}
+                loading={props.loadingSessions}
+                onOpen={props.onOpenSessions}
+                onSwitch={props.onSwitchSession}
+                onDelete={props.onDeleteSession}
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
           <div
@@ -266,104 +282,120 @@ export function ChatPanel(props: {
             onAdd={props.onAddAttachments}
             onRemove={props.onRemoveAttachment}
           />
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {props.session?.models.length ? (
-                <Select
-                  value={props.session.model}
-                  disabled={props.session.running}
-                  onValueChange={(value) => void props.onSetModel(value)}
-                >
-                  <SelectTrigger className="max-w-[28rem]">
-                    <SelectValue placeholder="Choose model">
-                      {modelSelectTriggerLabel(
+          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch]">
+            {props.session?.models.length ? (
+              <Select
+                value={props.session.model}
+                disabled={props.session.running}
+                onValueChange={(value) => void props.onSetModel(value)}
+              >
+                <SelectTrigger className="max-w-[9rem] shrink-0 sm:max-w-[28rem]">
+                  <SelectValue placeholder="Choose model">
+                    {(() => {
+                      const label = modelSelectTriggerLabel(
                         props.session.models,
                         props.session.model,
-                      )}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {props.session.models.map((entry) => (
-                        <SelectItem key={entry.name} value={entry.name}>
-                          {entry.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              ) : null}
-              <Select
-                value={
-                  props.reasoningEffort ?? REASONING_EFFORT_SELECT_VALUE_OFF
-                }
-                disabled={!props.session || props.session.running}
-                onValueChange={(value) =>
-                  void props.onSetReasoningEffort(
-                    value === REASONING_EFFORT_SELECT_VALUE_OFF
-                      ? null
-                      : (value as ReasoningEffortLevel),
-                  )
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Effort">
-                    {effortSelectTriggerLabel(props.reasoningEffort)}
+                      );
+                      if (!label) return null;
+                      return (
+                        <>
+                          <span className="sm:hidden">
+                            {truncateLabel(label, 10)}
+                          </span>
+                          <span className="hidden sm:inline">{label}</span>
+                        </>
+                      );
+                    })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value={REASONING_EFFORT_SELECT_VALUE_OFF}>
-                      Off
-                    </SelectItem>
-                    {REASONING_EFFORT_OPTIONS.map((level) => (
-                      <SelectItem key={level} value={level}>
-                        {REASONING_EFFORT_LABELS[level]}
+                    {props.session.models.map((entry) => (
+                      <SelectItem key={entry.name} value={entry.name}>
+                        {entry.name}
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <Select
-                value={props.sessionMode}
-                disabled={!props.session || props.session.running}
-                onValueChange={(value) =>
-                  void props.onSetSessionMode(value as ChatSessionMode)
-                }
-              >
-                <SelectTrigger className="min-w-[9rem]">
-                  <SelectValue placeholder="Mode">
+            ) : null}
+            <Select
+              value={props.reasoningEffort ?? REASONING_EFFORT_SELECT_VALUE_OFF}
+              disabled={!props.session || props.session.running}
+              onValueChange={(value) =>
+                void props.onSetReasoningEffort(
+                  value === REASONING_EFFORT_SELECT_VALUE_OFF
+                    ? null
+                    : (value as ReasoningEffortLevel),
+                )
+              }
+            >
+              <SelectTrigger className="shrink-0">
+                <SelectValue placeholder="Effort">
+                  <span className="sm:hidden">
+                    {effortSelectCompactLabel(props.reasoningEffort)}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {effortSelectTriggerLabel(props.reasoningEffort)}
+                  </span>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={REASONING_EFFORT_SELECT_VALUE_OFF}>
+                    Off
+                  </SelectItem>
+                  {REASONING_EFFORT_OPTIONS.map((level) => (
+                    <SelectItem key={level} value={level}>
+                      {REASONING_EFFORT_LABELS[level]}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select
+              value={props.sessionMode}
+              disabled={!props.session || props.session.running}
+              onValueChange={(value) =>
+                void props.onSetSessionMode(value as ChatSessionMode)
+              }
+            >
+              <SelectTrigger className="shrink-0 sm:min-w-[9rem]">
+                <SelectValue placeholder="Mode">
+                  <span className="sm:hidden">
+                    {MODE_SELECT_LABELS[props.sessionMode]}
+                  </span>
+                  <span className="hidden sm:inline">
                     {modeSelectTriggerLabel(props.sessionMode)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="agent">Agent</SelectItem>
-                    <SelectItem value="plan">Plan</SelectItem>
-                    <SelectItem value="ask">Ask</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <Select
-                value={props.yolo ? "on" : "off"}
-                disabled={!props.session || props.session.running}
-                onValueChange={(value) => void props.onSetYolo(value === "on")}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Yolo">
-                    {props.yolo ? "Yolo · On" : "Yolo · Off"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="off">Off</SelectItem>
-                    <SelectItem value="on">On</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-2 flex-1" aria-hidden />
-            <div className="shrink-0">
+                  </span>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="agent">Agent</SelectItem>
+                  <SelectItem value="plan">Plan</SelectItem>
+                  <SelectItem value="ask">Ask</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select
+              value={props.yolo ? "on" : "off"}
+              disabled={!props.session || props.session.running}
+              onValueChange={(value) => void props.onSetYolo(value === "on")}
+            >
+              <SelectTrigger className="shrink-0">
+                <SelectValue placeholder="Yolo">
+                  {props.yolo ? "Yolo · On" : "Yolo · Off"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="off">Off</SelectItem>
+                  <SelectItem value="on">On</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <div className="ml-auto hidden shrink-0 sm:block">
               <ChatStatusBlip status={props.session?.status ?? "ready"} />
             </div>
           </div>
@@ -603,7 +635,7 @@ function ChatBubble({
     >
       <div
         className={cn(
-          "group max-w-[88%] rounded-3xl px-4 py-3 text-sm leading-6 shadow-sm",
+          "group max-w-[88%] min-w-0 break-words rounded-3xl px-4 py-3 text-sm leading-6 shadow-sm",
           isUser
             ? "rounded-br-md bg-primary text-primary-foreground"
             : isTool
