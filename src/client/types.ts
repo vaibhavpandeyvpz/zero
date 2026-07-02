@@ -3,12 +3,16 @@ import type {
   FileToolDisplay,
   McpTransport,
   NamedMcpTransport,
+  ServerAuthStatus,
   SkillListEntry,
   SkillSearchResult,
   TodoViewState,
 } from "hoomanjs";
 
-export type { WikiDocRecord, WikiListResult } from "hoomanjs";
+export type { ServerAuthStatus } from "hoomanjs";
+
+/** One rule from the persisted, disk-backed "always allow" tool allowlist. */
+export type AllowlistRule = { tool: string; pattern: string };
 
 export type NoticeKind = "success" | "error" | "info";
 
@@ -24,7 +28,7 @@ export type ZeroPaths = {
 
 export type ZeroConfigResponse = {
   config: ConfigData;
-  maskedLlmParams: unknown;
+  maskedProviderOptions: unknown;
   instructions: string;
   paths: ZeroPaths;
 };
@@ -85,7 +89,7 @@ export type ApprovalRequest = {
 };
 
 /** Session tool surface for web chat (matches Hooman session modes). */
-export type ChatSessionMode = "default" | "plan" | "ask";
+export type ChatSessionMode = "agent" | "plan" | "ask";
 
 export type ChatSessionSnapshot = {
   sessionId: string;
@@ -147,6 +151,7 @@ export type ChatStreamEvent =
   | { type: "assistant.created"; line: ChatLine }
   | { type: "turn.queued"; queued: ChatSessionSnapshot["queued"] }
   | { type: "turn.started"; queued: ChatSessionSnapshot["queued"] }
+  | { type: "turn.steered"; line: ChatLine }
   | { type: "reasoning.delta"; lineId: string; text: string }
   | { type: "assistant.delta"; lineId: string; text: string }
   | { type: "tool.started"; line: ChatLine; assistantLineId?: string }

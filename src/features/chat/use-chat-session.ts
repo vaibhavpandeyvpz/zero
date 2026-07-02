@@ -52,6 +52,9 @@ export function useChatSession() {
           yolo: session?.yolo ?? false,
         },
         (event) => {
+          if (event.type === "turn.steered") {
+            toast.info("Sent as live guidance to the running turn.");
+          }
           setSession((current) => applyChatEvent(current, sessionId, event));
         },
       );

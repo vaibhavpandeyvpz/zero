@@ -1,4 +1,5 @@
 import type {
+  AllowlistRule,
   ApprovalDecision,
   AttachmentUploadResponse,
   ChannelModeStatus,
@@ -10,10 +11,9 @@ import type {
   HealthResponse,
   McpServerView,
   McpUpsertRequest,
+  ServerAuthStatus,
   SkillSearchResponse,
   SkillsResponse,
-  WikiDocRecord,
-  WikiListResult,
   ZeroConfigResponse,
 } from "./types";
 
@@ -244,6 +244,31 @@ export function removeMcp(name: string): Promise<{ servers: McpServerView[] }> {
   );
 }
 
+export function getMcpAuthStatuses(): Promise<{
+  statuses: ServerAuthStatus[];
+}> {
+  return request<{ statuses: ServerAuthStatus[] }>("/api/mcp/auth-status");
+}
+
+/** Opens the server-side browser to complete OAuth; resolves once signed in. */
+export function authenticateMcp(
+  name: string,
+): Promise<{ statuses: ServerAuthStatus[] }> {
+  return request<{ statuses: ServerAuthStatus[] }>(
+    `/api/mcp/${encodeURIComponent(name)}/authenticate`,
+    { method: "POST" },
+  );
+}
+
+export function logoutMcp(
+  name: string,
+): Promise<{ statuses: ServerAuthStatus[] }> {
+  return request<{ statuses: ServerAuthStatus[] }>(
+    `/api/mcp/${encodeURIComponent(name)}/logout`,
+    { method: "POST" },
+  );
+}
+
 export function listSkills(): Promise<SkillsResponse> {
   return request<SkillsResponse>("/api/skills");
 }
@@ -271,76 +296,21 @@ export function restartServices(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/api/services/restart", { method: "POST" });
 }
 
-export function getWikiDocuments(
-  page = 1,
-  pageSize = 20,
-): Promise<WikiListResult> {
-  const q = new URLSearchParams({
-    page: String(page),
-    pageSize: String(pageSize),
-  });
-  return request<WikiListResult>(`/api/wiki/documents?${q}`).then((raw) => {
-    const items = Array.isArray(raw.items) ? raw.items : [];
-    const safePage =
-      typeof raw.page === "number" && Number.isFinite(raw.page) && raw.page > 0
-        ? Math.floor(raw.page)
-        : page;
-    const safeSize =
-      typeof raw.pageSize === "number" &&
-      Number.isFinite(raw.pageSize) &&
-      raw.pageSize > 0
-        ? Math.floor(raw.pageSize)
-        : pageSize;
-    const base = { page: safePage, pageSize: safeSize, items };
-    if (
-      typeof raw.total === "number" &&
-      Number.isFinite(raw.total) &&
-      raw.total >= 0
-    ) {
-      return { ...base, total: raw.total } as WikiListResult;
-    }
-    return base as WikiListResult;
+export function getAllowlistRules(): Promise<{ rules: AllowlistRule[] }> {
+  return request<{ rules: AllowlistRule[] }>("/api/approvals/allowlist");
+}
+
+export function removeAllowlistRule(
+  rule: AllowlistRule,
+): Promise<{ rules: AllowlistRule[] }> {
+  return request<{ rules: AllowlistRule[] }>("/api/approvals/allowlist", {
+    method: "DELETE",
+    body: JSON.stringify(rule),
   });
 }
 
-export async function uploadWikiDocument(
-  file: File,
-): Promise<{ doc: WikiDocRecord }> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch("/api/wiki/documents", {
-    method: "POST",
-    body: form,
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    let message = text || `${res.status} ${res.statusText}`;
-    try {
-      const data = JSON.parse(text) as { error?: string };
-      message = data.error ?? message;
-    } catch {
-      // keep message
-    }
-    throw new Error(message);
-  }
-  return text
-    ? (JSON.parse(text) as { doc: WikiDocRecord })
-    : ({} as { doc: WikiDocRecord });
-}
-
-export async function deleteWikiDocument(docId: string): Promise<void> {
-  const res = await fetch(`/api/wiki/documents/${encodeURIComponent(docId)}`, {
+export function clearAllowlistRules(): Promise<{ rules: AllowlistRule[] }> {
+  return request<{ rules: AllowlistRule[] }>("/api/approvals/allowlist/all", {
     method: "DELETE",
   });
-  if (!res.ok) {
-    const text = await res.text();
-    let message = text || `${res.status} ${res.statusText}`;
-    try {
-      const data = JSON.parse(text) as { error?: string };
-      message = data.error ?? message;
-    } catch {
-      // keep message
-    }
-    throw new Error(message);
-  }
 }

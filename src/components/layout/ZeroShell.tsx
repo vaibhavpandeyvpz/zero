@@ -1,40 +1,44 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import {
   BotIcon,
   CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
+  KeyRoundIcon,
+  LogOutIcon,
   MoonIcon,
   PlusIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   SparklesIcon,
   SunIcon,
   RotateCcwIcon,
   Trash2Icon,
-  UploadIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import {
   addMcp,
-  deleteWikiDocument,
-  getWikiDocuments,
+  authenticateMcp,
+  clearAllowlistRules,
+  getAllowlistRules,
+  getMcpAuthStatuses,
   installSkill,
+  logoutMcp,
+  removeAllowlistRule,
   removeMcp,
   removeSkill,
   restartServices,
   saveConfig,
   searchSkills,
   updateMcp,
-  uploadWikiDocument,
 } from "@/client/api";
 import type {
+  AllowlistRule,
   McpServerView,
+  ServerAuthStatus,
   SkillSearchResponse,
   SkillsResponse,
-  WikiListResult,
   ZeroConfigResponse,
 } from "@/client/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -81,11 +85,12 @@ import {
   LLM_PROVIDER_LABELS,
   MCP_CONNECTION_LABELS,
   PROMPT_LABELS,
+  REASONING_DISPLAY_LABELS,
   SEARCH_PROVIDER_LABELS,
   TOOL_LABELS,
 } from "@/features/settings/config-labels";
 import {
-  exampleLlmParamsJson,
+  exampleProviderOptionsJson,
   type LlmProviderOption,
 } from "@/features/settings/hooman-llm-providers";
 import {
@@ -103,84 +108,25 @@ import { useSkillInstallFlow } from "@/features/settings/use-skill-install-flow"
 import { useZeroData } from "@/features/app/use-zero-data";
 import { useChatSession } from "@/features/chat/use-chat-session";
 
-const WIKI_SETTINGS_PAGE_SIZE = 15;
-
-function wikiDocKindLabel(fileName: string, mime: string): string {
-  const lower = fileName.toLowerCase();
-  if (mime === "application/pdf" || lower.endsWith(".pdf")) return "PDF";
-  if (
-    mime.includes("wordprocessingml") ||
-    mime === "application/msword" ||
-    lower.endsWith(".docx") ||
-    lower.endsWith(".doc")
-  ) {
-    return "Word";
-  }
-  return "Document";
+function mcpAuthBadgeVariant(
+  status: ServerAuthStatus["status"],
+): "secondary" | "destructive" | "outline" {
+  if (status === "authenticated") return "secondary";
+  if (status === "expired") return "destructive";
+  return "outline";
 }
 
-function wikiListPageSize(list: WikiListResult, requestSize: number): number {
-  const ps = list.pageSize;
-  if (typeof ps === "number" && Number.isFinite(ps) && ps > 0) {
-    return Math.floor(ps);
+function mcpAuthBadgeLabel(status: ServerAuthStatus["status"]): string {
+  switch (status) {
+    case "authenticated":
+      return "Connected";
+    case "expired":
+      return "Expired";
+    case "unauthenticated":
+      return "Not connected";
+    default:
+      return "";
   }
-  return requestSize;
-}
-
-function wikiListTotalExplicit(list: WikiListResult): number | null {
-  const t = list.total;
-  if (typeof t === "number" && Number.isFinite(t) && t >= 0) {
-    return t;
-  }
-  return null;
-}
-
-function wikiPagerContentPage(
-  list: WikiListResult | null,
-  uiPage: number,
-): number {
-  if (!list) return uiPage;
-  const p = list.page;
-  if (typeof p === "number" && Number.isFinite(p) && p > 0) {
-    return Math.floor(p);
-  }
-  return uiPage;
-}
-
-function wikiTotalPagesFromList(
-  list: WikiListResult,
-  contentPage: number,
-  requestSize: number,
-): number {
-  const ps = wikiListPageSize(list, requestSize);
-  const explicit = wikiListTotalExplicit(list);
-  if (explicit != null) {
-    return Math.max(1, Math.ceil(explicit / ps));
-  }
-  const n = list.items.length;
-  if (n < ps) {
-    return Math.max(1, contentPage);
-  }
-  return contentPage + 1;
-}
-
-function wikiDocumentsSubtitle(
-  list: WikiListResult,
-  contentPage: number,
-  requestSize: number,
-): string {
-  const ps = wikiListPageSize(list, requestSize);
-  const explicit = wikiListTotalExplicit(list);
-  if (explicit != null) {
-    if (explicit === 0) return "0 documents";
-    return explicit === 1 ? "1 document" : `${explicit} documents`;
-  }
-  const n = list.items.length;
-  if (n < ps) {
-    const t = (contentPage - 1) * ps + n;
-    return t === 1 ? "1 document" : `${t} documents`;
-  }
-  return `At least ${contentPage * ps} documents`;
 }
 
 export function ZeroShell() {
@@ -278,12 +224,13 @@ export function ZeroShell() {
             onSubmit={chat.submitMessage}
             onCancel={chat.cancel}
             onSetModel={chat.setModel}
-            sessionMode={chat.session?.sessionMode ?? "default"}
+            sessionMode={chat.session?.sessionMode ?? "agent"}
             onSetSessionMode={chat.setSessionMode}
             yolo={chat.session?.yolo ?? false}
             onSetYolo={chat.setYolo}
             onToggleDaemon={data.toggleDaemon}
             onApprove={chat.approve}
+            reasoningDisplay={data.config?.config.reasoning}
           />
         </TabsContent>
 
@@ -321,23 +268,31 @@ function SettingsPanel(props: {
   refreshAll: () => Promise<void>;
 }) {
   const defaultSessionsCheckboxId = useId();
+  const mcpOauthCheckboxId = useId();
   const {
     configDraft,
     configErrors,
     instructions,
-    llmParamsText,
+    providerOptionsText,
+    selectedProviderName,
+    selectedProvider,
+    providerTypes,
     selectedLlmName,
     selectedLlm,
-    providers,
     setConfigErrors,
     setInstructions,
+    setSelectedProviderName,
     setSelectedLlmName,
-    setCurrentLlmParamsText,
-    getServerLlmBaseline,
+    setCurrentProviderOptionsText,
+    getServerProviderBaseline,
     updateDraft,
     updateToolToggle,
+    patchSelectedProvider,
     patchSelectedLlm,
-    parseAllLlmParams,
+    parseAllProviders,
+    addProvider,
+    removeSelectedProvider,
+    renameSelectedProvider,
     addLlm,
     removeSelectedLlm,
     renameSelectedLlm,
@@ -357,6 +312,7 @@ function SettingsPanel(props: {
     mcpCwd,
     mcpUrl,
     mcpHeaderEntries,
+    mcpOauthEnabled,
     setMcpDialogOpen,
     setMcpName,
     setMcpType,
@@ -365,6 +321,7 @@ function SettingsPanel(props: {
     setMcpCwd,
     setMcpUrl,
     setMcpHeaderEntries,
+    setMcpOauthEnabled,
     resetMcpForm,
     startAddMcpServer,
     editMcpServer,
@@ -385,50 +342,48 @@ function SettingsPanel(props: {
   } = skillsFlow;
 
   const [settingsSection, setSettingsSection] = useState("general");
-  const [wikiList, setWikiList] = useState<WikiListResult | null>(null);
-  const [wikiListBusy, setWikiListBusy] = useState(false);
-  const [wikiPage, setWikiPage] = useState(1);
-  const wikiFileInputRef = useRef<HTMLInputElement>(null);
+  const [mcpAuthStatuses, setMcpAuthStatuses] = useState<ServerAuthStatus[]>(
+    [],
+  );
+  const [mcpAuthBusyName, setMcpAuthBusyName] = useState<string | null>(null);
+  const [allowlistRules, setAllowlistRules] = useState<AllowlistRule[]>([]);
+  const [allowlistBusy, setAllowlistBusy] = useState(false);
 
-  const wikiTotalsPage =
-    wikiListBusy || wikiList == null
-      ? wikiPage
-      : wikiPagerContentPage(wikiList, wikiPage);
-  const wikiTotalPages =
-    wikiList == null
-      ? 1
-      : wikiTotalPagesFromList(
-          wikiList,
-          wikiTotalsPage,
-          WIKI_SETTINGS_PAGE_SIZE,
-        );
-  const wikiDocCountLabel =
-    wikiList == null
-      ? ""
-      : wikiDocumentsSubtitle(
-          wikiList,
-          wikiTotalsPage,
-          WIKI_SETTINGS_PAGE_SIZE,
-        );
-
-  const loadWikiDocuments = useCallback(async () => {
-    setWikiListBusy(true);
+  const loadMcpAuthStatuses = useCallback(async () => {
     try {
-      setWikiList(await getWikiDocuments(wikiPage, WIKI_SETTINGS_PAGE_SIZE));
+      const data = await getMcpAuthStatuses();
+      setMcpAuthStatuses(data.statuses);
+    } catch {
+      setMcpAuthStatuses([]);
+    }
+  }, []);
+
+  const loadAllowlistRules = useCallback(async () => {
+    setAllowlistBusy(true);
+    try {
+      const data = await getAllowlistRules();
+      setAllowlistRules(data.rules);
     } catch (error) {
       toast.error((error as Error).message);
-      setWikiList(null);
     } finally {
-      setWikiListBusy(false);
+      setAllowlistBusy(false);
     }
-  }, [wikiPage]);
+  }, []);
 
   useEffect(() => {
-    if (settingsSection !== "wiki") {
+    void loadMcpAuthStatuses();
+  }, [loadMcpAuthStatuses, props.mcp]);
+
+  useEffect(() => {
+    if (settingsSection !== "approvals") {
       return;
     }
-    void loadWikiDocuments();
-  }, [settingsSection, loadWikiDocuments]);
+    void loadAllowlistRules();
+  }, [settingsSection, loadAllowlistRules]);
+
+  function mcpAuthStatusFor(name: string): ServerAuthStatus | undefined {
+    return mcpAuthStatuses.find((entry) => entry.name === name);
+  }
 
   async function runTask(task: () => Promise<void>, success: string) {
     props.setBusy(true);
@@ -468,13 +423,14 @@ function SettingsPanel(props: {
               <div className="overflow-x-auto overflow-y-hidden pb-1">
                 <TabsList variant="line">
                   <TabsTrigger value="general">General</TabsTrigger>
-                  <TabsTrigger value="llm">LLM</TabsTrigger>
+                  <TabsTrigger value="providers">Providers</TabsTrigger>
+                  <TabsTrigger value="llm">Models</TabsTrigger>
                   <TabsTrigger value="search">Search</TabsTrigger>
                   <TabsTrigger value="prompts">Prompts</TabsTrigger>
                   <TabsTrigger value="tools">Tools</TabsTrigger>
-                  <TabsTrigger value="wiki">Wiki</TabsTrigger>
                   <TabsTrigger value="agents">Subagents</TabsTrigger>
                   <TabsTrigger value="compaction">Compaction</TabsTrigger>
+                  <TabsTrigger value="approvals">Approvals</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -498,6 +454,163 @@ function SettingsPanel(props: {
                     onChange={(event) => setInstructions(event.target.value)}
                   />
                 </Field>
+                <Field>
+                  <FieldLabel>Reasoning display</FieldLabel>
+                  <Select
+                    value={configDraft.reasoning}
+                    onValueChange={(value) =>
+                      updateDraft((draft) => ({
+                        ...draft,
+                        reasoning: value as typeof draft.reasoning,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="max-w-72">
+                      <SelectValue placeholder="Reasoning display" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {(["collapsed", "full"] as const).map((item) => (
+                          <SelectItem key={item} value={item}>
+                            {REASONING_DISPLAY_LABELS[item]}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Controls whether the model&apos;s reasoning/thinking trace
+                    is shown collapsed or expanded in chat by default.
+                  </p>
+                </Field>
+              </TabsContent>
+
+              <TabsContent
+                value="providers"
+                className="mt-0 flex flex-col gap-4"
+              >
+                <p className="text-muted-foreground text-sm">
+                  Providers hold connection details (API keys, base URLs,
+                  reasoning defaults). Named LLMs on the Models tab reference a
+                  provider by name.
+                </p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field className="min-w-64 flex-1">
+                    <FieldLabel>Provider</FieldLabel>
+                    <Select
+                      value={selectedProviderName}
+                      onValueChange={setSelectedProviderName}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {configDraft.providers.map((entry) => (
+                            <SelectItem key={entry.name} value={entry.name}>
+                              {entry.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Button type="button" variant="outline" onClick={addProvider}>
+                    <PlusIcon />
+                    Add
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={
+                      !selectedProvider || configDraft.providers.length <= 1
+                    }
+                    onClick={() => {
+                      try {
+                        removeSelectedProvider();
+                      } catch (error) {
+                        setConfigErrors([(error as Error).message]);
+                      }
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+                {selectedProvider ? (
+                  <>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel>Name</FieldLabel>
+                        <Input
+                          value={selectedProvider.name}
+                          onChange={(event) => {
+                            try {
+                              renameSelectedProvider(event.target.value);
+                            } catch (error) {
+                              setConfigErrors([(error as Error).message]);
+                            }
+                          }}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Type</FieldLabel>
+                        <Select
+                          value={selectedProvider.provider}
+                          onValueChange={(value) => {
+                            const provider = value as LlmProviderOption;
+                            patchSelectedProvider((entry) => ({
+                              ...entry,
+                              provider: provider as never,
+                            }));
+                            const baseline = getServerProviderBaseline(
+                              selectedProvider.name,
+                            );
+                            if (baseline?.provider === provider) {
+                              setCurrentProviderOptionsText(
+                                baseline.optionsText,
+                              );
+                            } else {
+                              setCurrentProviderOptionsText(
+                                exampleProviderOptionsJson(provider),
+                              );
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {providerTypes.map((item) => (
+                                <SelectItem key={item} value={item}>
+                                  {LLM_PROVIDER_LABELS[item]}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+                    <Field>
+                      <FieldLabel>Provider options</FieldLabel>
+                      <Textarea
+                        className="min-h-32 font-mono"
+                        value={
+                          providerOptionsText[selectedProvider.name] ?? "{}"
+                        }
+                        onChange={(event) =>
+                          setCurrentProviderOptionsText(event.target.value)
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        JSON object — apiKey, baseURL, headers, and an optional{" "}
+                        <code>reasoning</code> block (
+                        <code>{`{ effort, summary?, display? }`}</code>) to
+                        enable extended thinking.
+                      </p>
+                    </Field>
+                  </>
+                ) : null}
               </TabsContent>
 
               <TabsContent value="llm" className="mt-0 flex flex-col gap-4">
@@ -538,7 +651,7 @@ function SettingsPanel(props: {
                 </div>
                 {selectedLlm ? (
                   <>
-                    <div className="grid gap-3 md:grid-cols-3">
+                    <div className="grid gap-3 md:grid-cols-2">
                       <Field>
                         <FieldLabel>Name</FieldLabel>
                         <Input
@@ -555,42 +668,33 @@ function SettingsPanel(props: {
                       <Field>
                         <FieldLabel>Provider</FieldLabel>
                         <Select
-                          value={selectedLlm.options.provider}
-                          onValueChange={(value) => {
-                            const provider = value as LlmProviderOption;
+                          value={selectedLlm.provider}
+                          onValueChange={(value) =>
                             patchSelectedLlm((entry) => ({
                               ...entry,
-                              options: {
-                                ...entry.options,
-                                provider: provider as never,
-                              },
-                            }));
-                            const baseline = getServerLlmBaseline(
-                              selectedLlm.name,
-                            );
-                            if (baseline?.provider === provider) {
-                              setCurrentLlmParamsText(baseline.paramsText);
-                            } else {
-                              setCurrentLlmParamsText(
-                                exampleLlmParamsJson(provider),
-                              );
-                            }
-                          }}
+                              provider: value,
+                            }))
+                          }
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Provider" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectGroup>
-                              {providers.map((item) => (
-                                <SelectItem key={item} value={item}>
-                                  {LLM_PROVIDER_LABELS[item]}
+                              {configDraft.providers.map((entry) => (
+                                <SelectItem key={entry.name} value={entry.name}>
+                                  {entry.name} ·{" "}
+                                  {LLM_PROVIDER_LABELS[
+                                    entry.provider as LlmProviderOption
+                                  ] ?? entry.provider}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
                           </SelectContent>
                         </Select>
                       </Field>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
                       <Field>
                         <FieldLabel>Model</FieldLabel>
                         <Input
@@ -606,17 +710,49 @@ function SettingsPanel(props: {
                           }
                         />
                       </Field>
+                      <Field>
+                        <FieldLabel>Temperature</FieldLabel>
+                        <Input
+                          type="number"
+                          step={0.1}
+                          placeholder="Optional"
+                          value={selectedLlm.options.temperature ?? ""}
+                          onChange={(event) =>
+                            patchSelectedLlm((entry) => ({
+                              ...entry,
+                              options: {
+                                ...entry.options,
+                                temperature:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Number(event.target.value),
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Max tokens</FieldLabel>
+                        <Input
+                          type="number"
+                          min={1}
+                          placeholder="Optional"
+                          value={selectedLlm.options.maxTokens ?? ""}
+                          onChange={(event) =>
+                            patchSelectedLlm((entry) => ({
+                              ...entry,
+                              options: {
+                                ...entry.options,
+                                maxTokens:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Number(event.target.value),
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
                     </div>
-                    <Field>
-                      <FieldLabel>LLM params</FieldLabel>
-                      <Textarea
-                        className="min-h-32 font-mono"
-                        value={llmParamsText[selectedLlm.name] ?? "{}"}
-                        onChange={(event) =>
-                          setCurrentLlmParamsText(event.target.value)
-                        }
-                      />
-                    </Field>
                     <Field
                       orientation="horizontal"
                       data-disabled={
@@ -706,6 +842,7 @@ function SettingsPanel(props: {
                                 "brave",
                                 "exa",
                                 "firecrawl",
+                                "litellm",
                                 "serper",
                                 "tavily",
                               ] as const
@@ -718,31 +855,92 @@ function SettingsPanel(props: {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field>
-                      <FieldLabel>
-                        {SEARCH_PROVIDER_LABELS[configDraft.search.provider]}{" "}
-                        API key
-                      </FieldLabel>
-                      <Input
-                        type="password"
-                        value={
-                          configDraft.search[configDraft.search.provider]
-                            .apiKey ?? ""
-                        }
-                        onChange={(event) => {
-                          const providerName = configDraft.search.provider;
-                          updateDraft((draft) => ({
-                            ...draft,
-                            search: {
-                              ...draft.search,
-                              [providerName]: {
-                                apiKey: event.target.value || undefined,
+                    {configDraft.search.provider === "litellm" ? (
+                      <>
+                        <Field>
+                          <FieldLabel>LiteLLM base URL</FieldLabel>
+                          <Input
+                            value={configDraft.search.litellm.baseURL ?? ""}
+                            onChange={(event) =>
+                              updateDraft((draft) => ({
+                                ...draft,
+                                search: {
+                                  ...draft.search,
+                                  litellm: {
+                                    ...draft.search.litellm,
+                                    baseURL: event.target.value || undefined,
+                                  },
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel>LiteLLM API key</FieldLabel>
+                          <Input
+                            type="password"
+                            value={configDraft.search.litellm.apiKey ?? ""}
+                            onChange={(event) =>
+                              updateDraft((draft) => ({
+                                ...draft,
+                                search: {
+                                  ...draft.search,
+                                  litellm: {
+                                    ...draft.search.litellm,
+                                    apiKey: event.target.value || undefined,
+                                  },
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel>LiteLLM web search tool</FieldLabel>
+                          <Input
+                            placeholder="Optional"
+                            value={configDraft.search.litellm.tool ?? ""}
+                            onChange={(event) =>
+                              updateDraft((draft) => ({
+                                ...draft,
+                                search: {
+                                  ...draft.search,
+                                  litellm: {
+                                    ...draft.search.litellm,
+                                    tool: event.target.value || undefined,
+                                  },
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                      </>
+                    ) : (
+                      <Field>
+                        <FieldLabel>
+                          {SEARCH_PROVIDER_LABELS[configDraft.search.provider]}{" "}
+                          API key
+                        </FieldLabel>
+                        <Input
+                          type="password"
+                          value={
+                            configDraft.search[configDraft.search.provider]
+                              .apiKey ?? ""
+                          }
+                          onChange={(event) => {
+                            const providerName = configDraft.search.provider;
+                            updateDraft((draft) => ({
+                              ...draft,
+                              search: {
+                                ...draft.search,
+                                [providerName]: {
+                                  apiKey: event.target.value || undefined,
+                                },
                               },
-                            },
-                          }));
-                        }}
-                      />
-                    </Field>
+                            }));
+                          }}
+                        />
+                      </Field>
+                    )}
                   </div>
                 ) : null}
               </TabsContent>
@@ -773,14 +971,7 @@ function SettingsPanel(props: {
               <TabsContent value="tools" className="mt-0 flex flex-col gap-4">
                 <div className="grid gap-3">
                   {(
-                    [
-                      "todo",
-                      "fetch",
-                      "filesystem",
-                      "shell",
-                      "sleep",
-                      "memory",
-                    ] as const
+                    ["todo", "fetch", "filesystem", "shell", "sleep"] as const
                   ).map((tool) => (
                     <ToggleRow
                       key={tool}
@@ -792,201 +983,32 @@ function SettingsPanel(props: {
                     />
                   ))}
                 </div>
-              </TabsContent>
-
-              <TabsContent value="wiki" className="mt-0 flex flex-col gap-4">
-                <ToggleRow
-                  label={TOOL_LABELS.wiki}
-                  checked={configDraft.tools.wiki.enabled}
-                  onCheckedChange={(enabled) =>
-                    updateToolToggle("wiki", enabled)
-                  }
-                />
                 <p className="text-muted-foreground text-sm">
-                  Upload PDF or Word files so the agent can search them when
-                  helping you.
+                  Long-term memory and offloaded context are always on and
+                  managed automatically by the agent.
                 </p>
-                <input
-                  ref={wikiFileInputRef}
-                  type="file"
-                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = "";
-                    if (!file) return;
-                    void (async () => {
-                      props.setBusy(true);
-                      try {
-                        await uploadWikiDocument(file);
-                        toast.success(`Indexed “${file.name}”.`);
-                        await loadWikiDocuments();
-                      } catch (error) {
-                        toast.error((error as Error).message);
-                      } finally {
-                        props.setBusy(false);
-                      }
-                    })();
-                  }}
-                />
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={props.busy || wikiListBusy}
-                    onClick={() => wikiFileInputRef.current?.click()}
-                  >
-                    <UploadIcon />
-                    Add PDF or DOCX
-                  </Button>
-                  {wikiListBusy && !wikiList ? (
-                    <span className="text-muted-foreground text-sm">
-                      Loading…
-                    </span>
-                  ) : wikiList ? (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex items-center rounded-lg border bg-muted/40 p-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 shrink-0"
-                          disabled={wikiListBusy || wikiPage <= 1}
-                          aria-label="Previous page"
-                          onClick={() => setWikiPage((p) => Math.max(1, p - 1))}
-                        >
-                          <ChevronLeftIcon className="size-4" />
-                        </Button>
-                        <span className="min-w-[7.5rem] px-2 text-center text-sm tabular-nums">
-                          {wikiPage} / {wikiListBusy ? "…" : wikiTotalPages}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 shrink-0"
-                          disabled={wikiListBusy || wikiPage >= wikiTotalPages}
-                          aria-label="Next page"
-                          onClick={() => setWikiPage((p) => p + 1)}
-                        >
-                          <ChevronRightIcon className="size-4" />
-                        </Button>
-                      </div>
-                      <span className="text-muted-foreground text-sm tabular-nums">
-                        {wikiListBusy ? "…" : wikiDocCountLabel}
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-                {!wikiListBusy && wikiList && wikiList.items.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">
-                    No documents yet. Add a PDF or DOCX to get started.
-                  </p>
-                ) : null}
-                {wikiList && wikiList.items.length > 0 ? (
-                  <div className="flex flex-col gap-2 rounded-md border">
-                    {wikiList.items.map((doc) => (
-                      <div
-                        key={doc.doc_id}
-                        className="flex flex-wrap items-center justify-between gap-3 border-b p-3 last:border-b-0"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">
-                            {doc.file_name}
-                          </p>
-                          <p className="text-muted-foreground text-xs">
-                            {wikiDocKindLabel(
-                              doc.file_name,
-                              doc.original_mime_type,
-                            )}{" "}
-                            · {new Date(doc.updated_at_ms).toLocaleString()}
-                          </p>
-                        </div>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="ghost" type="button">
-                              <Trash2Icon />
-                              Remove
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-sm">
-                            <DialogHeader>
-                              <DialogTitle>Remove document?</DialogTitle>
-                              <DialogDescription>
-                                Remove <strong>{doc.file_name}</strong> from
-                                search. This cannot be undone.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <DialogFooter>
-                              <DialogClose asChild>
-                                <Button variant="outline">Cancel</Button>
-                              </DialogClose>
-                              <DialogClose asChild>
-                                <Button
-                                  variant="destructive"
-                                  onClick={() =>
-                                    void (async () => {
-                                      props.setBusy(true);
-                                      try {
-                                        await deleteWikiDocument(doc.doc_id);
-                                        toast.success(
-                                          `Removed “${doc.file_name}”.`,
-                                        );
-                                        await loadWikiDocuments();
-                                      } catch (error) {
-                                        toast.error((error as Error).message);
-                                      } finally {
-                                        props.setBusy(false);
-                                      }
-                                    })()
-                                  }
-                                >
-                                  Remove
-                                </Button>
-                              </DialogClose>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
               </TabsContent>
 
               <TabsContent value="agents" className="mt-0 flex flex-col gap-4">
                 <ToggleRow
                   label="Subagents"
-                  checked={configDraft.tools.agents.enabled}
+                  checked={configDraft.tools.subagents.enabled}
                   onCheckedChange={(enabled) =>
                     updateDraft((draft) => ({
                       ...draft,
                       tools: {
                         ...draft.tools,
-                        agents: { ...draft.tools.agents, enabled },
+                        subagents: { enabled },
                       },
                     }))
                   }
                 />
-                <Field>
-                  <FieldLabel>Concurrency</FieldLabel>
-                  <Input
-                    min={1}
-                    type="number"
-                    value={configDraft.tools.agents.concurrency}
-                    onChange={(event) =>
-                      updateDraft((draft) => ({
-                        ...draft,
-                        tools: {
-                          ...draft.tools,
-                          agents: {
-                            ...draft.tools.agents,
-                            concurrency: Number(event.target.value || 1),
-                          },
-                        },
-                      }))
-                    }
-                  />
-                </Field>
+                <p className="text-muted-foreground text-sm">
+                  When enabled, the agent can delegate research, code review,
+                  and test-investigation work to built-in subagent tools (
+                  <code>subagent_research</code>, <code>subagent_review</code>,{" "}
+                  <code>subagent_test_investigator</code>).
+                </p>
               </TabsContent>
 
               <TabsContent
@@ -1030,6 +1052,76 @@ function SettingsPanel(props: {
                   />
                 </Field>
               </TabsContent>
+
+              <TabsContent
+                value="approvals"
+                className="mt-0 flex flex-col gap-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-muted-foreground text-sm">
+                    Tools you chose &quot;Always allow&quot; for in chat are
+                    persisted here (disk-backed, shared across every chat and
+                    channel session) so approvals survive restarts.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={allowlistBusy || allowlistRules.length === 0}
+                    onClick={() =>
+                      void runTask(async () => {
+                        setAllowlistRules((await clearAllowlistRules()).rules);
+                      }, "Cleared always-allow rules.")
+                    }
+                  >
+                    <Trash2Icon />
+                    Clear all
+                  </Button>
+                </div>
+                {allowlistBusy ? (
+                  <span className="text-muted-foreground text-sm">
+                    Loading…
+                  </span>
+                ) : allowlistRules.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    No always-allow rules yet.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 rounded-md border">
+                    {allowlistRules.map((rule) => (
+                      <div
+                        key={`${rule.tool}:${rule.pattern}`}
+                        className="flex flex-wrap items-center justify-between gap-3 border-b p-3 last:border-b-0"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium">{rule.tool}</p>
+                            <ShieldCheckIcon className="size-3.5 text-muted-foreground" />
+                          </div>
+                          <p className="truncate font-mono text-xs text-muted-foreground">
+                            {rule.pattern}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          type="button"
+                          onClick={() =>
+                            void runTask(async () => {
+                              setAllowlistRules(
+                                (await removeAllowlistRule(rule)).rules,
+                              );
+                            }, "Rule removed.")
+                          }
+                        >
+                          <Trash2Icon />
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
             </Tabs>
           ) : null}
           {configErrors.length > 0 ? (
@@ -1055,7 +1147,7 @@ function SettingsPanel(props: {
                     if (!configDraft) return;
                     const updated = await saveConfig({
                       ...configDraft,
-                      llms: parseAllLlmParams(),
+                      providers: parseAllProviders(),
                       instructions,
                     });
                     props.setConfig(updated);
@@ -1137,12 +1229,77 @@ function SettingsPanel(props: {
                       <Badge variant="secondary">
                         {MCP_CONNECTION_LABELS[server.transport.type]}
                       </Badge>
+                      {server.transport.type !== "stdio" &&
+                      server.transport.oauth?.enabled ? (
+                        <Badge
+                          variant={mcpAuthBadgeVariant(
+                            mcpAuthStatusFor(server.name)?.status ??
+                              "unauthenticated",
+                          )}
+                        >
+                          {mcpAuthBadgeLabel(
+                            mcpAuthStatusFor(server.name)?.status ??
+                              "unauthenticated",
+                          )}
+                        </Badge>
+                      ) : null}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {server.summary}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    {server.transport.type !== "stdio" &&
+                    server.transport.oauth?.enabled ? (
+                      mcpAuthStatusFor(server.name)?.status ===
+                      "authenticated" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={mcpAuthBusyName === server.name}
+                          onClick={() =>
+                            void (async () => {
+                              setMcpAuthBusyName(server.name);
+                              try {
+                                await logoutMcp(server.name);
+                                await loadMcpAuthStatuses();
+                                toast.success(`Signed out of ${server.name}.`);
+                              } catch (error) {
+                                toast.error((error as Error).message);
+                              } finally {
+                                setMcpAuthBusyName(null);
+                              }
+                            })()
+                          }
+                        >
+                          <LogOutIcon />
+                          Sign out
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={mcpAuthBusyName === server.name}
+                          onClick={() =>
+                            void (async () => {
+                              setMcpAuthBusyName(server.name);
+                              try {
+                                await authenticateMcp(server.name);
+                                await loadMcpAuthStatuses();
+                                toast.success(`Connected to ${server.name}.`);
+                              } catch (error) {
+                                toast.error((error as Error).message);
+                              } finally {
+                                setMcpAuthBusyName(null);
+                              }
+                            })()
+                          }
+                        >
+                          <KeyRoundIcon />
+                          Connect
+                        </Button>
+                      )
+                    ) : null}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -1292,6 +1449,27 @@ function SettingsPanel(props: {
                       valuePlaceholder="Value"
                       onChange={setMcpHeaderEntries}
                     />
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        id={mcpOauthCheckboxId}
+                        checked={mcpOauthEnabled}
+                        onCheckedChange={(checked) =>
+                          setMcpOauthEnabled(checked === true)
+                        }
+                      />
+                      <FieldContent>
+                        <FieldLabel
+                          htmlFor={mcpOauthCheckboxId}
+                          className="font-normal"
+                        >
+                          Use OAuth to authenticate
+                        </FieldLabel>
+                        <p className="text-xs text-muted-foreground">
+                          The server opens a sign-in page in a browser; tokens
+                          are stored on disk and refreshed automatically.
+                        </p>
+                      </FieldContent>
+                    </Field>
                   </div>
                 )}
               </div>

@@ -57,7 +57,7 @@ import { useAutoScroll } from "./use-auto-scroll";
 import { useTextareaAutosize } from "./use-textarea-autosize";
 
 const MODE_SELECT_LABELS: Record<ChatSessionMode, string> = {
-  default: "Default",
+  agent: "Agent",
   plan: "Plan",
   ask: "Ask",
 };
@@ -93,6 +93,7 @@ export function ChatPanel(props: {
   onSetYolo: (enabled: boolean) => Promise<void>;
   onToggleDaemon: (enabled: boolean) => Promise<void>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
+  reasoningDisplay?: "collapsed" | "full";
 }) {
   const lines = props.session?.lines ?? [];
   const todos = props.session?.todos;
@@ -136,6 +137,7 @@ export function ChatPanel(props: {
                       key={line.id}
                       line={line}
                       agentName={props.agentName}
+                      reasoningDisplay={props.reasoningDisplay ?? "collapsed"}
                     />
                   ))}
                 </div>
@@ -171,7 +173,7 @@ export function ChatPanel(props: {
                 value={props.input}
                 placeholder={
                   props.session?.running
-                    ? "Type a message to queue after the current turn"
+                    ? "Type a message to steer the running turn — press Enter to send now"
                     : "Type a message"
                 }
                 onChange={(event) => props.setInput(event.target.value)}
@@ -269,7 +271,7 @@ export function ChatPanel(props: {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value="default">Default</SelectItem>
+                      <SelectItem value="agent">Agent</SelectItem>
                       <SelectItem value="plan">Plan</SelectItem>
                       <SelectItem value="ask">Ask</SelectItem>
                     </SelectGroup>
@@ -554,9 +556,11 @@ function ChatStatusBlip({ status }: { status: string }) {
 function ChatBubble({
   line,
   agentName,
+  reasoningDisplay = "collapsed",
 }: {
   line: ChatLine;
   agentName: string;
+  reasoningDisplay?: "collapsed" | "full";
 }) {
   const isUser = line.role === "user";
   const isAssistant = line.role === "assistant";
@@ -600,7 +604,7 @@ function ChatBubble({
         {line.reasoningContent ? (
           <details
             className="group mb-3 rounded-xl bg-muted/30 px-3 py-2"
-            open={!line.done}
+            open={!line.done || reasoningDisplay === "full"}
           >
             <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
               <span>Reasoning</span>

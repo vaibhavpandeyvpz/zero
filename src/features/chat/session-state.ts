@@ -13,7 +13,7 @@ export function emptySession(sessionId: string): ChatSessionSnapshot {
     sessionId,
     running: false,
     yolo: false,
-    sessionMode: "default",
+    sessionMode: "agent",
     model: "unknown",
     models: [],
     queued: [],
@@ -73,6 +73,11 @@ export function applyChatEvent(
         status: "thinking",
         queued: event.queued,
       };
+    case "turn.steered":
+      // The user line was already appended via the preceding `user.message`
+      // event; this just signals the message was injected live rather than
+      // queued as a new turn (see use-chat-session's toast).
+      return base;
     case "reasoning.delta":
       return {
         ...base,

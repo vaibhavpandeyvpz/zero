@@ -21,6 +21,7 @@ export function useMcpDialog() {
   const [mcpCwd, setMcpCwd] = useState("");
   const [mcpUrl, setMcpUrl] = useState("");
   const [mcpHeaderEntries, setMcpHeaderEntries] = useState<KeyValueEntry[]>([]);
+  const [mcpOauthEnabled, setMcpOauthEnabled] = useState(false);
 
   function resetMcpForm() {
     setMcpName("");
@@ -31,6 +32,7 @@ export function useMcpDialog() {
     setMcpCwd("");
     setMcpUrl("");
     setMcpHeaderEntries([]);
+    setMcpOauthEnabled(false);
   }
 
   function startAddMcpServer() {
@@ -61,6 +63,11 @@ export function useMcpDialog() {
         ? []
         : stringMapToEntries(server.transport.headers),
     );
+    setMcpOauthEnabled(
+      server.transport.type === "stdio"
+        ? false
+        : Boolean(server.transport.oauth?.enabled),
+    );
     setMcpDialogOpen(true);
   }
 
@@ -80,6 +87,7 @@ export function useMcpDialog() {
       type: mcpType,
       url: mcpUrl,
       headers: entriesToStringMap(mcpHeaderEntries, "Headers"),
+      oauth: mcpOauthEnabled ? { enabled: true } : undefined,
     };
   }
 
@@ -93,6 +101,7 @@ export function useMcpDialog() {
     mcpCwd,
     mcpUrl,
     mcpHeaderEntries,
+    mcpOauthEnabled,
     setMcpDialogOpen,
     setMcpName,
     setMcpType,
@@ -101,6 +110,7 @@ export function useMcpDialog() {
     setMcpCwd,
     setMcpUrl,
     setMcpHeaderEntries,
+    setMcpOauthEnabled,
     resetMcpForm,
     startAddMcpServer,
     editMcpServer,

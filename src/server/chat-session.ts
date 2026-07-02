@@ -37,6 +37,10 @@ import {
   type StreamEvent,
 } from "./agents/chat-stream-events.js";
 import { createSessionConfig, type SessionConfig } from "./session-config.js";
+import {
+  ChatTurnSteeringController,
+  createChatTurnSteeringIntervention,
+} from "./steering.js";
 
 type QueuedPrompt = {
   id: string;
@@ -81,11 +85,13 @@ export class ChatSession {
   private readonly approval = new ApprovalController(() =>
     this.emitApprovalChange(),
   );
+  /** Lets messages sent mid-turn steer the running turn instead of waiting in line. */
+  private readonly steering = new ChatTurnSteeringController();
   private running = false;
   private status = "ready";
   private yolo = false;
   /** UI preference before an agent exists; once live, snapshot prefers {@link getModeState}. */
-  private preferredSessionMode: ChatSessionMode = "default";
+  private preferredSessionMode: ChatSessionMode = "agent";
   private readonly config: SessionConfig;
   private agent: WorkerAgent | null = null;
   private manager: McpManager | null = null;
@@ -110,7 +116,8 @@ export class ChatSession {
   ): Promise<void> {
     const text = input.text.trim();
     const attachments = [...new Set(input.attachments ?? [])].filter(Boolean);
-    if (!text && resolveUploadedAttachments(attachments).length === 0) {
+    const resolvedAttachments = resolveUploadedAttachments(attachments);
+    if (!text && resolvedAttachments.length === 0) {
       return;
     }
     const userLine = this.appendLine({
@@ -124,6 +131,20 @@ export class ChatSession {
       done: true,
     });
     emit({ type: "user.message", line: userLine });
+
+    if (input.yolo !== undefined) {
+      this.yolo = Boolean(input.yolo);
+      this.worker.setDefaultYolo(this.yolo);
+    }
+
+    // A turn is already streaming — steer it live (via the agent's
+    // steering intervention) instead of waiting for it to finish.
+    if (this.running && this.agent) {
+      this.steering.queue([{ text, attachments: resolvedAttachments }]);
+      emit({ type: "turn.steered", line: userLine });
+      return;
+    }
+
     const assistantLine = this.appendLine({
       role: "assistant",
       content: "",
@@ -136,10 +157,6 @@ export class ChatSession {
     );
     if (!prompt.text && prompt.attachments.length === 0) {
       return;
-    }
-    if (input.yolo !== undefined) {
-      this.yolo = Boolean(input.yolo);
-      this.worker.setDefaultYolo(this.yolo);
     }
     this.queued.push(prompt);
     emit({ type: "turn.queued", queued: [...this.queued] });
@@ -189,7 +206,7 @@ export class ChatSession {
       model: this.currentModel(),
       models: this.config.llms.map((entry) => ({
         name: entry.name,
-        provider: entry.options.provider,
+        provider: entry.provider,
         model: entry.options.model,
         default: entry.default,
       })),
@@ -332,7 +349,8 @@ export class ChatSession {
         sessionId: this.sessionId,
         userId: this.sessionId,
         yolo: this.yolo,
-        sessionMode: this.preferredSessionMode as SessionMode,
+        mode: this.preferredSessionMode as SessionMode,
+        interventions: [createChatTurnSteeringIntervention(this.steering)],
       },
       false,
       this.config,
@@ -359,7 +377,8 @@ export class ChatSession {
         sessionId: this.sessionId,
         userId: this.sessionId,
         yolo: this.yolo,
-        sessionMode: this.preferredSessionMode as SessionMode,
+        mode: this.preferredSessionMode as SessionMode,
+        interventions: [createChatTurnSteeringIntervention(this.steering)],
       },
       false,
       this.config,

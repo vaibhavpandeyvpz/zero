@@ -1,11 +1,25 @@
+import crypto from "node:crypto";
 import {
   TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED,
-  allowToolForSession,
-  isToolSessionAllowed,
+  getAllowlist,
+  isImplicitlyAllowed,
   isYoloEnabled,
   planModeWriteEditRejectionMessage,
+  type McpManager,
 } from "hoomanjs";
 import type { ApprovalDecision, ApprovalRequest } from "../client/types.js";
+
+/**
+ * Structurally compatible with the various (near-identical, module-local)
+ * `AgentLike` types hoomanjs exports from `core/state/*` — using the generic
+ * `get<T>` shape here keeps this assignable to all of them.
+ */
+type AgentAppState = {
+  appState: {
+    get<T = unknown>(key: string): T;
+    set(key: string, value: unknown): void;
+  };
+};
 
 export type ApprovalToolCallEvent = {
   toolUse: {
@@ -15,7 +29,7 @@ export type ApprovalToolCallEvent = {
   tool?: {
     description?: string;
   };
-  agent: Parameters<typeof isToolSessionAllowed>[0];
+  agent: AgentAppState;
   cancel?: string;
 };
 
@@ -89,7 +103,8 @@ export function createApprovalHandler(
       !controller ||
       isYoloEnabled(event.agent) ||
       TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED.has(toolName) ||
-      isToolSessionAllowed(event.agent, toolName, event.toolUse.input)
+      isImplicitlyAllowed(toolName, event.toolUse.input) ||
+      getAllowlist().isAllowed(toolName, event.toolUse.input)
     ) {
       return;
     }
@@ -99,9 +114,112 @@ export function createApprovalHandler(
       return;
     }
     if (decision === "always") {
-      allowToolForSession(event.agent, toolName);
+      // Persisted disk-backed allowlist (`~/.zero/allowlist.json`), shared across
+      // every chat/channel session — not scoped to this session like before.
+      getAllowlist().allowAlways(toolName, event.toolUse.input);
       return;
     }
     event.cancel = `Tool "${toolName}" was rejected by the user.`;
+  };
+}
+
+const CHANNEL_DESCRIPTION_PREVIEW_LIMIT = 200;
+
+type ChannelOrigin = {
+  server?: string;
+  source?: string;
+  user?: string;
+  session?: string;
+  thread?: string;
+};
+
+function readChannelOrigin(agent: AgentAppState): ChannelOrigin | null {
+  const raw = agent.appState.get<unknown>("origin");
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const entry = raw as Record<string, unknown>;
+  const text = (value: unknown): string | undefined =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+  return {
+    server: text(entry.server),
+    source: text(entry.source),
+    user: text(entry.user),
+    session: text(entry.session),
+    thread: text(entry.thread),
+  };
+}
+
+/**
+ * Approval handler for tool calls originating from channel messages (Slack,
+ * Discord, etc. via MCP). New in hoomanjs 1.3x: `manager.requestChannelPermission`
+ * round-trips an allow/deny prompt back over the originating MCP server's
+ * `hooman/channel/permission` capability, instead of Zero's own in-app dialog
+ * (which has no UI surface for a headless channel message).
+ *
+ * Falls back to the same legacy “allow” behavior as before when the
+ * originating server doesn’t advertise support for that capability, so
+ * existing channel setups keep working unchanged.
+ */
+export function createChannelApprovalHandler(
+  manager: McpManager,
+): (event: ApprovalToolCallEvent) => Promise<void> {
+  return async (event: ApprovalToolCallEvent) => {
+    const toolName = event.toolUse.name;
+    const planReject = planModeWriteEditRejectionMessage(
+      event.agent,
+      toolName,
+      event.toolUse.input,
+    );
+    if (planReject) {
+      event.cancel = planReject;
+      return;
+    }
+    if (
+      isYoloEnabled(event.agent) ||
+      TOOL_APPROVAL_INTERNAL_ALWAYS_ALLOWED.has(toolName) ||
+      isImplicitlyAllowed(toolName, event.toolUse.input) ||
+      getAllowlist().isAllowed(toolName, event.toolUse.input)
+    ) {
+      return;
+    }
+
+    const origin = readChannelOrigin(event.agent);
+    if (!origin?.server) {
+      return;
+    }
+    const supported = await manager
+      .supportsChannelPermission(origin.server)
+      .catch(() => false);
+    if (!supported) {
+      return;
+    }
+
+    try {
+      const behavior = await manager.requestChannelPermission(origin.server, {
+        requestId: crypto.randomUUID(),
+        tool: toolName,
+        description: (
+          event.tool?.description?.trim() || `Run tool "${toolName}".`
+        ).slice(0, CHANNEL_DESCRIPTION_PREVIEW_LIMIT),
+        preview: previewInput(event.toolUse.input),
+        source: origin.source,
+        user: origin.user,
+        session: origin.session,
+        thread: origin.thread,
+      });
+      if (behavior === "allow_once") {
+        return;
+      }
+      if (behavior === "allow_always") {
+        getAllowlist().allowAlways(toolName, event.toolUse.input);
+        return;
+      }
+      event.cancel = `Tool "${toolName}" was rejected by remote approval.`;
+    } catch (error) {
+      event.cancel = `Tool "${toolName}" was denied: failed to request permission (${
+        error instanceof Error ? error.message : String(error)
+      }).`;
+    }
   };
 }

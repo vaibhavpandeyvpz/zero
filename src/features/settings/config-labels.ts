@@ -13,6 +13,7 @@ export const SEARCH_PROVIDER_LABELS = {
   brave: "Brave",
   exa: "Exa",
   firecrawl: "Firecrawl",
+  litellm: "LiteLLM",
   serper: "Serper",
   tavily: "Tavily",
 } as const;
@@ -30,8 +31,11 @@ export const TOOL_LABELS = {
   filesystem: "Filesystem",
   shell: "Shell",
   sleep: "Sleep",
-  memory: "Memory",
-  wiki: "Wiki",
+} as const;
+
+export const REASONING_DISPLAY_LABELS = {
+  collapsed: "Collapsed by default",
+  full: "Always expanded",
 } as const;
 
 export const MCP_CONNECTION_LABELS = {

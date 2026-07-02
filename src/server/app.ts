@@ -1,9 +1,11 @@
 import express, { type Request, type Response } from "express";
 import type { Zero } from "../zero.js";
+import type { AgentWorker } from "./agent-worker.js";
 import type { ChatSessions } from "./agents/chat-session.js";
 import type { ChannelMode } from "./agents/channel-input.js";
 import { createAttachmentUpload } from "./http/attachments.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { registerApprovalRoutes } from "./routes/approvals.js";
 import { registerAttachmentRoutes } from "./routes/attachments.js";
 import { registerChannelRoutes } from "./routes/channels.js";
 import { registerChatRoutes } from "./routes/chat.js";
@@ -12,12 +14,12 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerMcpRoutes } from "./routes/mcp.js";
 import { registerServiceRoutes } from "./routes/services.js";
 import { registerSkillsRoutes } from "./routes/skills.js";
-import { registerWikiRoutes } from "./routes/wiki.js";
 
 export type NextRequestHandler = (req: Request, res: Response) => Promise<void>;
 
 export function createServerApp(deps: {
   zero: Zero;
+  worker: AgentWorker;
   chats: ChatSessions;
   channelMode: ChannelMode;
   nextHandler: NextRequestHandler;
@@ -31,7 +33,7 @@ export function createServerApp(deps: {
   registerConfigRoutes(app, deps);
   registerMcpRoutes(app, deps);
   registerSkillsRoutes(app, deps);
-  registerWikiRoutes(app, deps);
+  registerApprovalRoutes(app);
   registerChannelRoutes(app, deps);
   registerAttachmentRoutes(app, { attachmentUpload: createAttachmentUpload() });
   registerChatRoutes(app, deps);

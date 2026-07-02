@@ -6,7 +6,10 @@ import {
   setYoloEnabled,
   type McpManager,
 } from "hoomanjs";
-import { createApprovalHandler } from "./approval.js";
+import {
+  createApprovalHandler,
+  createChannelApprovalHandler,
+} from "./approval.js";
 import type { ApprovalController } from "./approval.js";
 
 export type WorkerAgent = Awaited<ReturnType<typeof bootstrap>>["agent"];
@@ -143,7 +146,9 @@ export class AgentWorker {
       this.activeAgent = agent;
       cleanupHook = agent.addHook(
         BeforeToolCallEvent as never,
-        createApprovalHandler(job.approval) as never,
+        (job.source === "channel" && this.defaultManager
+          ? createChannelApprovalHandler(this.defaultManager)
+          : createApprovalHandler(job.approval)) as never,
       );
       this.applyJobState(agent, job);
       job.onStart?.(agent);

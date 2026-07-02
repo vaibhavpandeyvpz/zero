@@ -25,7 +25,6 @@ import {
   DEFAULT_INSTRUCTIONS,
   maskSensitiveParamsForDisplay,
   normalizeString,
-  parseJsonObject,
   transportSummary,
 } from "./lib/config-utils.js";
 import type {
@@ -82,10 +81,10 @@ export class Zero {
     this.appConfig.reload();
     return {
       config: this.configData(),
-      maskedLlmParams: Object.fromEntries(
-        this.appConfig.llms.map((entry) => [
+      maskedProviderOptions: Object.fromEntries(
+        this.appConfig.providers.map((entry) => [
           entry.name,
-          maskSensitiveParamsForDisplay(entry.options.params),
+          maskSensitiveParamsForDisplay(entry.options),
         ]),
       ),
       instructions: await this.readInstructions(),
@@ -164,20 +163,13 @@ export class Zero {
   private configData(): ConfigData {
     return {
       name: this.appConfig.name,
-      llms: this.appConfig.llms.map((entry) => ({
-        ...entry,
-        options: {
-          ...entry.options,
-          params: parseJsonObject(
-            entry.options.params,
-            `LLM params for ${entry.name}`,
-          ),
-        },
-      })),
+      providers: this.appConfig.providers,
+      llms: this.appConfig.llms,
       search: this.appConfig.search,
       prompts: this.appConfig.prompts,
       tools: this.appConfig.tools,
       compaction: this.appConfig.compaction,
+      reasoning: this.appConfig.reasoning,
     };
   }
 

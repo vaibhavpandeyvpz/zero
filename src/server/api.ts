@@ -82,6 +82,7 @@ async function main(): Promise<void> {
 
   const app = createServerApp({
     zero,
+    worker,
     chats,
     channelMode,
     nextHandler,
