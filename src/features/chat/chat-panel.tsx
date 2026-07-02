@@ -611,9 +611,12 @@ function ChatBubble({
               <ChevronDownIcon className="size-3 group-open:hidden" />
               <ChevronUpIcon className="hidden size-3 group-open:block" />
             </summary>
-            <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
-              {line.reasoningContent}
-            </pre>
+            <div className="mt-2 max-h-52 overflow-auto">
+              <MarkdownContent
+                content={line.reasoningContent}
+                className="text-xs text-muted-foreground"
+              />
+            </div>
           </details>
         ) : null}
 
@@ -691,9 +694,20 @@ function ToolArgumentsDisclosure({ content }: { content: string }) {
   );
 }
 
-function MarkdownContent({ content }: { content: string }) {
+function MarkdownContent({
+  content,
+  className,
+}: {
+  content: string;
+  className?: string;
+}) {
   return (
-    <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-auto prose-pre:rounded-md prose-pre:bg-muted prose-pre:p-3">
+    <div
+      className={cn(
+        "prose prose-sm max-w-none dark:prose-invert prose-pre:overflow-auto prose-pre:rounded-md prose-pre:bg-muted prose-pre:p-3",
+        className,
+      )}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );
