@@ -1095,7 +1095,7 @@ function SettingsPanel(props: {
                     No always-allow rules yet.
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2 rounded-md border">
+                  <div className="flex max-h-96 flex-col gap-2 overflow-y-auto rounded-md border">
                     {allowlistRules.map((rule) => (
                       <div
                         key={`${rule.tool}:${rule.pattern}`}
