@@ -80,7 +80,7 @@ function normalizePrompt(
 }
 
 function resolveUploadedAttachments(attachments: string[]): string[] {
-  return [...new Set(attachments)]
+  return Array.from(new Set(attachments))
     .map((name) => basename(name.trim()))
     .filter(Boolean)
     .map((name) => join(attachmentsPath(), name))
@@ -175,7 +175,9 @@ export class ChatSession {
     emit: (event: ChatStreamEvent) => void,
   ): Promise<void> {
     const text = input.text.trim();
-    const attachments = [...new Set(input.attachments ?? [])].filter(Boolean);
+    const attachments = Array.from(new Set(input.attachments ?? [])).filter(
+      Boolean,
+    );
     const resolvedAttachments = resolveUploadedAttachments(attachments);
     if (!text && resolvedAttachments.length === 0) {
       return;
@@ -539,9 +541,6 @@ export class ChatSession {
           name?: string;
           input?: unknown;
         };
-        if (block.type === "textBlock") {
-          this.appendAssistantText(block.text ?? "", emit);
-        }
         if (block.type === "toolUseBlock") {
           const toolLine = this.appendLine({
             role: "tool",
@@ -614,6 +613,9 @@ export class ChatSession {
       if (delta?.type === "reasoningContentDelta" && delta.text) {
         this.status = "thinking";
         this.appendAssistantReasoning(delta.text, emit);
+      } else if (delta?.type === "textDelta" && delta.text) {
+        this.status = "streaming";
+        this.appendAssistantText(delta.text, emit);
       } else {
         this.status = "streaming";
       }
@@ -761,7 +763,7 @@ export class ChatSession {
   }
 
   private finishPendingTools(): void {
-    for (const toolLineId of this.toolLineIds.values()) {
+    for (const toolLineId of Array.from(this.toolLineIds.values())) {
       this.updateLine(toolLineId, { phase: "done", done: true });
     }
     for (const toolLineId of this.pendingToolLineIds) {
@@ -824,7 +826,7 @@ export class ChatSessions {
 
   public async closeAll(): Promise<void> {
     await Promise.all(
-      [...this.sessions.values()].map((session) => session.close()),
+      Array.from(this.sessions.values()).map((session) => session.close()),
     );
     this.sessions.clear();
   }
