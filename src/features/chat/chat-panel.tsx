@@ -23,6 +23,7 @@ import type {
   ChatLine,
   ChatSessionMode,
   ChatSessionSnapshot,
+  ReasoningEffortLevel,
   UploadedAttachment,
 } from "@/client/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -49,6 +50,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { REASONING_EFFORT_OPTIONS } from "@/features/settings/hooman-llm-providers";
 import {
   attachmentPreviewUrl,
   isImageAttachment,
@@ -66,6 +68,19 @@ const MODE_SELECT_LABELS: Record<ChatSessionMode, string> = {
 
 function modeSelectTriggerLabel(mode: ChatSessionMode): string {
   return `Mode · ${MODE_SELECT_LABELS[mode]}`;
+}
+
+const REASONING_EFFORT_SELECT_VALUE_OFF = "off";
+
+const REASONING_EFFORT_LABELS: Record<ReasoningEffortLevel, string> = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+};
+
+function effortSelectTriggerLabel(effort: ReasoningEffortLevel | undefined) {
+  return `Effort · ${effort ? REASONING_EFFORT_LABELS[effort] : "Off"}`;
 }
 
 function modelSelectTriggerLabel(
@@ -93,6 +108,8 @@ export function ChatPanel(props: {
   onSetSessionMode: (mode: ChatSessionMode) => Promise<void>;
   yolo: boolean;
   onSetYolo: (enabled: boolean) => Promise<void>;
+  reasoningEffort?: ReasoningEffortLevel;
+  onSetReasoningEffort: (effort: ReasoningEffortLevel | null) => Promise<void>;
   onToggleDaemon: (enabled: boolean) => Promise<void>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
   onNewChat: () => Promise<void>;
@@ -270,6 +287,37 @@ export function ChatPanel(props: {
                     </SelectContent>
                   </Select>
                 ) : null}
+                <Select
+                  value={
+                    props.reasoningEffort ?? REASONING_EFFORT_SELECT_VALUE_OFF
+                  }
+                  disabled={!props.session || props.session.running}
+                  onValueChange={(value) =>
+                    void props.onSetReasoningEffort(
+                      value === REASONING_EFFORT_SELECT_VALUE_OFF
+                        ? null
+                        : (value as ReasoningEffortLevel),
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Effort">
+                      {effortSelectTriggerLabel(props.reasoningEffort)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value={REASONING_EFFORT_SELECT_VALUE_OFF}>
+                        Off
+                      </SelectItem>
+                      {REASONING_EFFORT_OPTIONS.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {REASONING_EFFORT_LABELS[level]}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
                 <Select
                   value={props.sessionMode}
                   disabled={!props.session || props.session.running}

@@ -24,6 +24,7 @@ import type {
   ChatSessionMode,
   ChatSessionSnapshot,
   ChatStreamEvent,
+  ReasoningEffortLevel,
 } from "../client/types.js";
 import { attachmentsPath } from "../lib/paths.js";
 import {
@@ -73,6 +74,31 @@ function resolveUploadedAttachments(attachments: string[]): string[] {
     .filter(Boolean)
     .map((name) => join(attachmentsPath(), name))
     .filter((path) => existsSync(path));
+}
+
+/** Provider `options` shape shared by every reasoning-capable provider (see hoomanjs `ReasoningOptions`). */
+type ProviderOptionsWithReasoning = {
+  reasoning?: {
+    effort?: ReasoningEffortLevel;
+    summary?: unknown;
+    display?: unknown;
+  };
+};
+
+function readProviderEffort(
+  options: ProviderOptionsWithReasoning | undefined,
+): ReasoningEffortLevel | undefined {
+  return options?.reasoning?.effort;
+}
+
+/** Returns `options` with `reasoning.effort` set, preserving sibling reasoning keys and dropping an empty `reasoning` object. */
+function withProviderEffort<T extends ProviderOptionsWithReasoning>(
+  options: T,
+  effort: ReasoningEffortLevel | undefined,
+): T {
+  const merged = { ...(options.reasoning ?? {}), effort };
+  const hasValues = Object.values(merged).some((value) => value !== undefined);
+  return { ...options, reasoning: hasValues ? merged : undefined };
 }
 
 export class ChatSession {
@@ -208,6 +234,7 @@ export class ChatSession {
         model: entry.options.model,
         default: entry.default,
       })),
+      reasoningEffort: this.currentReasoningEffort(),
     };
   }
 
@@ -250,6 +277,37 @@ export class ChatSession {
         ...entry,
         default: entry.name === trimmed,
       })),
+    });
+    if (this.agent) {
+      await this.rebuildAgent();
+    }
+  }
+
+  /** Sets `reasoning.effort` on the active model's provider; `undefined` turns thinking off. */
+  public async setReasoningEffort(
+    effort: ReasoningEffortLevel | undefined,
+  ): Promise<void> {
+    const active =
+      this.config.llms.find((entry) => entry.default) ?? this.config.llms[0];
+    if (!active) {
+      throw new Error("No model is configured.");
+    }
+    const providerName = active.provider;
+    const providerEntry = this.config.providers.find(
+      (entry) => entry.name === providerName,
+    );
+    if (!providerEntry) {
+      throw new Error(`Provider "${providerName}" not found.`);
+    }
+    if (readProviderEffort(providerEntry.options) === effort) {
+      return;
+    }
+    this.config.update({
+      providers: this.config.providers.map((entry) =>
+        entry.name === providerName
+          ? { ...entry, options: withProviderEffort(entry.options, effort) }
+          : entry,
+      ),
     });
     if (this.agent) {
       await this.rebuildAgent();
@@ -402,6 +460,13 @@ export class ChatSession {
       this.config.llms[0]?.name ??
       "unknown"
     );
+  }
+
+  private currentReasoningEffort(): ReasoningEffortLevel | undefined {
+    if (this.config.llms.length === 0) {
+      return undefined;
+    }
+    return readProviderEffort(this.config.llm.providerOptions);
   }
 
   private async toStreamInput(prompt: QueuedPrompt): Promise<AgentWorkerInput> {

@@ -228,6 +228,8 @@ export function ZeroShell() {
             onSetSessionMode={chat.setSessionMode}
             yolo={chat.session?.yolo ?? false}
             onSetYolo={chat.setYolo}
+            reasoningEffort={chat.session?.reasoningEffort}
+            onSetReasoningEffort={chat.setReasoningEffort}
             onToggleDaemon={data.toggleDaemon}
             onApprove={chat.approve}
             onNewChat={chat.newChat}

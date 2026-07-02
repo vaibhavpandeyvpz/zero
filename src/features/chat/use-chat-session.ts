@@ -5,6 +5,7 @@ import {
   decideApproval,
   getChatSession,
   setChatModel,
+  setChatReasoningEffort,
   setChatSessionMode,
   setChatYolo,
   streamMessage,
@@ -13,6 +14,7 @@ import {
 import type {
   ChatSessionMode,
   ChatSessionSnapshot,
+  ReasoningEffortLevel,
   UploadedAttachment,
 } from "@/client/types";
 import { applyChatEvent, newSessionId } from "./session-state";
@@ -129,6 +131,15 @@ export function useChatSession() {
     }
   }
 
+  async function setReasoningEffort(effort: ReasoningEffortLevel | null) {
+    try {
+      const data = await setChatReasoningEffort(sessionId, { effort });
+      setSession(data.session);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  }
+
   async function newChat() {
     if (session?.running) {
       try {
@@ -158,6 +169,7 @@ export function useChatSession() {
     setModel,
     setYolo,
     setSessionMode,
+    setReasoningEffort,
     newChat,
   };
 }

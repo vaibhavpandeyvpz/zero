@@ -4,6 +4,7 @@ import type {
   AttachmentUploadResponse,
   ChannelModeStatus,
   ChatModelRequest,
+  ChatReasoningEffortRequest,
   ChatSendRequest,
   ChatSessionMode,
   ChatSessionSnapshot,
@@ -184,6 +185,19 @@ export function setChatYolo(
 ): Promise<{ session: ChatSessionSnapshot }> {
   return request<{ session: ChatSessionSnapshot }>(
     `/api/chat/${encodeURIComponent(sessionId)}/yolo`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export function setChatReasoningEffort(
+  sessionId: string,
+  body: ChatReasoningEffortRequest,
+): Promise<{ session: ChatSessionSnapshot }> {
+  return request<{ session: ChatSessionSnapshot }>(
+    `/api/chat/${encodeURIComponent(sessionId)}/reasoning-effort`,
     {
       method: "POST",
       body: JSON.stringify(body),

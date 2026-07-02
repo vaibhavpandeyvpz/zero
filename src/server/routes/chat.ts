@@ -3,6 +3,7 @@ import type {
   ApprovalDecision,
   ChatSendRequest,
   ChatSessionMode,
+  ReasoningEffortLevel,
 } from "../../client/types.js";
 import type { ChatSessions } from "../agents/chat-session.js";
 import { writeNdjson } from "../http/ndjson.js";
@@ -95,6 +96,45 @@ export function registerChatRoutes(
     session.setYolo(body.yolo);
     res.json({ session: session.snapshot() });
   });
+
+  app.post(
+    "/api/chat/:sessionId/reasoning-effort",
+    asyncRoute(async (req, res) => {
+      const raw = (req.body as { effort?: unknown }).effort;
+      const levels: ReasoningEffortLevel[] = [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+      ];
+      if (raw !== null && !levels.includes(raw as ReasoningEffortLevel)) {
+        res.status(400).json({
+          error:
+            'Body must include "effort": "minimal", "low", "medium", "high", or null to disable.',
+        });
+        return;
+      }
+      const session = deps.chats.get(routeParam(req, "sessionId"));
+      if (session.snapshot().running) {
+        res.status(409).json({
+          error:
+            "Wait for the active turn to finish before changing reasoning effort.",
+        });
+        return;
+      }
+      try {
+        await session.setReasoningEffort(
+          (raw as ReasoningEffortLevel | null) ?? undefined,
+        );
+      } catch (error) {
+        res.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+      res.json({ session: session.snapshot() });
+    }),
+  );
 
   app.post("/api/chat/:sessionId/session-mode", (req, res) => {
     const mode = (req.body as { mode?: unknown }).mode;

@@ -1,3 +1,5 @@
+import type { ReasoningEffortLevel } from "@/client/types";
+
 /**
  * LLM provider ids and labels for the Settings UI.
  *
@@ -93,5 +95,4 @@ export const REASONING_EFFORT_OPTIONS = [
   "low",
   "medium",
   "high",
-] as const;
-export type ReasoningEffortOption = (typeof REASONING_EFFORT_OPTIONS)[number];
+] as const satisfies readonly ReasoningEffortLevel[];

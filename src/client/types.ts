@@ -3,7 +3,6 @@ import type {
   FileToolDisplay,
   McpTransport,
   NamedMcpTransport,
-  ServerAuthStatus,
   SkillListEntry,
   SkillSearchResult,
   TodoViewState,
@@ -91,6 +90,9 @@ export type ApprovalRequest = {
 /** Session tool surface for web chat (matches Hooman session modes). */
 export type ChatSessionMode = "agent" | "plan" | "ask";
 
+/** Reasoning effort levels shared across every reasoning-capable provider (undefined/null means off). */
+export type ReasoningEffortLevel = "minimal" | "low" | "medium" | "high";
+
 export type ChatSessionSnapshot = {
   sessionId: string;
   running: boolean;
@@ -105,6 +107,8 @@ export type ChatSessionSnapshot = {
     model: string;
     default: boolean;
   }>;
+  /** Reasoning effort applied to the active model's provider; undefined means thinking is off. */
+  reasoningEffort?: ReasoningEffortLevel;
   queued: Array<{ id: string; text: string; attachments: string[] }>;
   lines: ChatLine[];
   approvals: ApprovalRequest | null;
@@ -142,6 +146,11 @@ export type ChatSendResponse = {
 
 export type ChatModelRequest = {
   name: string;
+};
+
+export type ChatReasoningEffortRequest = {
+  /** `null` disables thinking for the active model's provider. */
+  effort: ReasoningEffortLevel | null;
 };
 
 export type ApprovalDecision = "allow" | "always" | "deny";
