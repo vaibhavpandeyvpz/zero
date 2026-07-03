@@ -172,9 +172,9 @@ export function registerChatRoutes(
     "/api/chat/:sessionId/session-mode",
     asyncRoute(async (req, res) => {
       const mode = (req.body as { mode?: unknown }).mode;
-      if (mode !== "default" && mode !== "plan" && mode !== "ask") {
+      if (mode !== "agent" && mode !== "plan" && mode !== "ask") {
         res.status(400).json({
-          error: 'Body must include "mode": "default", "plan", or "ask".',
+          error: 'Body must include "mode": "agent", "plan", or "ask".',
         });
         return;
       }

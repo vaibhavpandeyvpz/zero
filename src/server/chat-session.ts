@@ -19,6 +19,7 @@ import {
 } from "hoomanjs";
 import type {
   ApprovalDecision,
+  ApprovalRequest,
   ChatLine,
   ChatSendRequest,
   ChatSessionMode,
@@ -117,8 +118,9 @@ export class ChatSession {
   private readonly queued: QueuedPrompt[] = [];
   private readonly toolLineIds = new Map<string, string>();
   private readonly pendingToolLineIds: string[] = [];
-  private readonly approval = new ApprovalController(() =>
-    this.emitApprovalChange(),
+  private readonly approval = new ApprovalController(
+    () => this.emitApprovalChange(),
+    (request, toolUseId) => this.attachApprovalPreview(request, toolUseId),
   );
   /** Lets messages sent mid-turn steer the running turn instead of waiting in line. */
   private readonly steering = new ChatTurnSteeringController();
@@ -417,7 +419,11 @@ export class ChatSession {
         });
       },
       onComplete: (agent) => {
-        this.updateLine(assistantId, { done: true });
+        // The final assistant bubble may not be the one created up front —
+        // `beginAssistantSegment` swaps in a new one each time the agent
+        // loop resumes after a tool call — so finish whichever is current.
+        const finalAssistantId = this.assistantLineId ?? assistantId;
+        this.updateLine(finalAssistantId, { done: true });
         this.assistantLineId = null;
         this.refreshTodos(agent, prompt.emit);
         this.finishPendingTools();
@@ -426,7 +432,7 @@ export class ChatSession {
         void this.flushPersist();
         prompt.emit({
           type: "turn.completed",
-          assistantLineId: assistantId,
+          assistantLineId: finalAssistantId,
           usage: this.usage,
           todos: this.todos,
         });
@@ -608,6 +614,9 @@ export class ChatSession {
     event: StreamEvent["event"],
     emit: (event: ChatStreamEvent) => void,
   ): void {
+    if (event?.type === "modelMessageStartEvent") {
+      this.beginAssistantSegment(emit);
+    }
     if (event?.type === "modelContentBlockDeltaEvent") {
       const delta = event.delta;
       if (delta?.type === "reasoningContentDelta" && delta.text) {
@@ -636,6 +645,30 @@ export class ChatSession {
       emit({ type: "usage.updated", usage: this.usage });
       this.schedulePersist();
     }
+  }
+
+  /**
+   * Called on every `modelMessageStartEvent`, i.e. once per model invocation
+   * within the agent loop (initial response, plus one more each time the
+   * loop resumes after a tool call). If the current assistant bubble already
+   * picked up content from a prior invocation, it's finalized and a fresh
+   * bubble is started for this one — otherwise the first invocation would
+   * keep reusing an empty bubble, so no split happens there.
+   */
+  private beginAssistantSegment(emit: (event: ChatStreamEvent) => void): void {
+    const current = this.currentAssistantLine();
+    if (!current || (!current.content && !current.reasoningContent)) {
+      return;
+    }
+    this.updateLine(current.id, { done: true });
+    emit({ type: "assistant.done", lineId: current.id });
+    const nextLine = this.appendLine({
+      role: "assistant",
+      content: "",
+      done: false,
+    });
+    this.assistantLineId = nextLine.id;
+    emit({ type: "assistant.created", line: nextLine });
   }
 
   private appendAssistantText(
@@ -778,6 +811,30 @@ export class ChatSession {
     if (index >= 0) {
       this.queued.splice(index, 1);
     }
+  }
+
+  /**
+   * Persists the approval's human-facing preview (e.g. a drafted plan) onto
+   * the corresponding tool-call line so it stays visible in the transcript
+   * after the approval prompt is resolved, whatever the decision.
+   */
+  private attachApprovalPreview(
+    request: ApprovalRequest,
+    toolUseId?: string,
+  ): void {
+    if (!request.preview || !toolUseId) {
+      return;
+    }
+    const lineId = this.toolLineIds.get(toolUseId);
+    if (!lineId) {
+      return;
+    }
+    this.updateLine(lineId, { approvalPreview: request.preview });
+    this.activeEmit?.({
+      type: "tool.preview",
+      lineId,
+      preview: request.preview,
+    });
   }
 
   private emitApprovalChange(): void {

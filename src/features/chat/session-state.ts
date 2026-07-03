@@ -102,6 +102,11 @@ export function applyChatEvent(
         ),
       };
     }
+    case "assistant.done":
+      return {
+        ...base,
+        lines: updateLine(base.lines, event.lineId, { done: true }),
+      };
     case "tool.started":
       return {
         ...base,
@@ -119,6 +124,13 @@ export function applyChatEvent(
           done: true,
           resultContent: event.resultContent,
           fileToolDisplay: event.fileToolDisplay,
+        }),
+      };
+    case "tool.preview":
+      return {
+        ...base,
+        lines: updateLine(base.lines, event.lineId, {
+          approvalPreview: event.preview,
         }),
       };
     case "todos.updated":

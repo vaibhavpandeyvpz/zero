@@ -77,6 +77,13 @@ export type ChatLine = {
   resultContent?: string;
   reasoningContent?: string;
   fileToolDisplay?: FileToolDisplay;
+  /**
+   * Human-facing preview attached to a tool call once an approval is
+   * requested for it (e.g. the drafted plan for `exit_plan_mode`). Persists
+   * on the line regardless of the approval decision, so the content stays
+   * visible in the transcript after the approval prompt is resolved.
+   */
+  approvalPreview?: string;
   done: boolean;
 };
 
@@ -177,6 +184,13 @@ export type ChatStreamEvent =
   | { type: "turn.steered"; line: ChatLine }
   | { type: "reasoning.delta"; lineId: string; text: string }
   | { type: "assistant.delta"; lineId: string; text: string }
+  /**
+   * Marks an assistant bubble as finished mid-turn, right before a new one is
+   * started for the model's next reasoning/response segment (e.g. after a
+   * tool call resumes the agent loop). Keeps each segment in its own bubble
+   * instead of one continuously-growing message for the whole turn.
+   */
+  | { type: "assistant.done"; lineId: string }
   | { type: "tool.started"; line: ChatLine; assistantLineId?: string }
   | {
       type: "tool.result";
@@ -184,6 +198,7 @@ export type ChatStreamEvent =
       resultContent: string;
       fileToolDisplay?: FileToolDisplay;
     }
+  | { type: "tool.preview"; lineId: string; preview: string }
   | { type: "todos.updated"; todos: TodoViewState }
   | {
       type: "usage.updated";

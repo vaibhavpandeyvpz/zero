@@ -3,9 +3,11 @@
 import { useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import {
+  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClipboardListIcon,
+  CopyIcon,
   FileTextIcon,
   Loader2Icon,
   SendIcon,
@@ -35,6 +37,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -125,282 +135,290 @@ export function ChatPanel(props: {
   onDeleteSession: (sessionId: string) => Promise<void>;
 }) {
   const lines = props.session?.lines ?? [];
-  const todos = props.session?.todos;
+  const todoItems = props.session?.todos?.todos ?? [];
   const canSend = !props.uploadingAttachments;
-  const scrollRef = useAutoScroll([lines.length, props.session?.status]);
+  const scrollRef = useAutoScroll([
+    lines.length,
+    props.session?.status,
+    props.session?.approvals?.id,
+  ]);
   const textareaRef = useTextareaAutosize(props.input);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0">
-        <CardHeader>
-          <div className="flex flex-row items-start justify-between gap-3">
-            <div className="min-w-0">
-              <CardTitle>Chat</CardTitle>
-              <CardDescription className="hidden sm:block">
-                Talk to your agent. Channel messages can join the same queue.
-              </CardDescription>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-              <div className="sm:hidden">
-                <ChatStatusBlip status={props.session?.status ?? "ready"} />
+    <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden pb-0">
+          <CardHeader>
+            <div className="flex flex-row items-start justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle>Chat</CardTitle>
+                <CardDescription className="hidden sm:block">
+                  Talk to your agent. Channel messages can join the same queue.
+                </CardDescription>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void props.onNewChat()}
-              >
-                <SquarePenIcon />
-                <span className="sm:hidden">New</span>
-                <span className="hidden sm:inline">New chat</span>
-              </Button>
-              <SessionSwitcher
-                sessions={props.sessions}
-                currentSessionId={props.session?.sessionId ?? ""}
-                loading={props.loadingSessions}
-                onOpen={props.onOpenSessions}
-                onSwitch={props.onSwitchSession}
-                onDelete={props.onDeleteSession}
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
-          <div
-            ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6"
-          >
-            {lines.length === 0 ? (
-              <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-                <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
-                  <SparklesIcon className="size-5" />
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <div className="sm:hidden">
+                  <ChatStatusBlip status={props.session?.status ?? "ready"} />
                 </div>
-                <div>
-                  <p className="font-medium text-foreground">
-                    Start a conversation
-                  </p>
-                  <p className="text-sm">
-                    Ask your agent to plan, research, or use connected tools.
-                  </p>
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void props.onNewChat()}
+                >
+                  <SquarePenIcon />
+                  <span className="sm:hidden">New</span>
+                  <span className="hidden sm:inline">New chat</span>
+                </Button>
+                <SessionSwitcher
+                  sessions={props.sessions}
+                  currentSessionId={props.session?.sessionId ?? ""}
+                  loading={props.loadingSessions}
+                  onOpen={props.onOpenSessions}
+                  onSwitch={props.onSwitchSession}
+                  onDelete={props.onDeleteSession}
+                />
               </div>
-            ) : (
-              <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
-                {lines.map((line) => (
-                  <ChatBubble
-                    key={line.id}
-                    line={line}
-                    agentName={props.agentName}
-                    reasoningDisplay={props.reasoningDisplay ?? "collapsed"}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {props.session?.running &&
-          todos?.visible &&
-          todos.todos.length > 0 ? (
-            <div className="border-t bg-muted/30 p-3 sm:p-4">
-              <TodoPanel todos={todos.todos} />
             </div>
-          ) : null}
-
-          {props.session?.approvals ? (
-            <div className="border-t bg-muted/30 p-3 sm:p-4">
-              <ApprovalCard
-                request={props.session.approvals}
-                onApprove={props.onApprove}
-              />
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card className="shrink-0 py-0">
-        <CardContent className="flex flex-col gap-2 p-3">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2">
-            <Textarea
-              ref={textareaRef}
-              rows={1}
-              className="max-h-14 min-h-9 resize-none overflow-y-hidden"
-              value={props.input}
-              placeholder={
-                props.session?.running
-                  ? "Type a message to steer the running turn — press Enter to send now"
-                  : "Type a message"
-              }
-              onChange={(event) => props.setInput(event.target.value)}
-              onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
-                const files = filesFromClipboard(event.clipboardData);
-                if (files.length === 0) {
-                  return;
-                }
-                event.preventDefault();
-                if (props.uploadingAttachments) {
-                  return;
-                }
-                void props.onAddAttachments(files);
-              }}
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.metaKey
-                ) {
-                  event.preventDefault();
-                  void props.onSubmit();
-                }
-              }}
-            />
-            <Button
-              aria-label={
-                props.session?.running
-                  ? "Stop current turn"
-                  : props.uploadingAttachments
-                    ? "Uploading"
-                    : "Send message"
-              }
-              disabled={!props.session?.running && !canSend}
-              size="icon"
-              className="h-full min-h-9 max-h-14 w-auto shrink-0 aspect-square"
-              variant={props.session?.running ? "outline" : "default"}
-              onClick={props.session?.running ? props.onCancel : props.onSubmit}
+          </CardHeader>
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
+            <div
+              ref={scrollRef}
+              className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/20 to-background px-4 py-6 sm:px-6"
             >
-              {props.session?.running ? (
-                <SquareIcon className="size-4" />
-              ) : props.uploadingAttachments ? (
-                <Loader2Icon className="size-4 animate-spin" />
+              {lines.length === 0 ? (
+                <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+                  <div className="flex size-12 items-center justify-center rounded-2xl border bg-background shadow-sm">
+                    <SparklesIcon className="size-5" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">
+                      Start a conversation
+                    </p>
+                    <p className="text-sm">
+                      Ask your agent to plan, research, or use connected tools.
+                    </p>
+                  </div>
+                </div>
               ) : (
-                <SendIcon className="size-4" />
+                <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
+                  {lines.map((line) => (
+                    <ChatBubble
+                      key={line.id}
+                      line={line}
+                      agentName={props.agentName}
+                      reasoningDisplay={props.reasoningDisplay ?? "collapsed"}
+                    />
+                  ))}
+                </div>
               )}
-            </Button>
-          </div>
-          <AttachmentDropzone
-            attachments={props.attachments}
-            uploading={props.uploadingAttachments}
-            onAdd={props.onAddAttachments}
-            onRemove={props.onRemoveAttachment}
-          />
-          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch]">
-            {props.session?.models.length ? (
-              <Select
-                value={props.session.model}
-                disabled={props.session.running}
-                onValueChange={(value) => void props.onSetModel(value)}
+            </div>
+
+            <div className="border-t bg-muted/30 p-3 sm:p-4 xl:hidden">
+              <TodoPanel todos={todoItems} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shrink-0 py-0">
+          <CardContent className="flex flex-col gap-2 p-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2">
+              <Textarea
+                ref={textareaRef}
+                rows={1}
+                className="max-h-14 min-h-9 resize-none overflow-y-hidden"
+                value={props.input}
+                placeholder={
+                  props.session?.running
+                    ? "Type a message to steer the running turn — press Enter to send now"
+                    : "Type a message"
+                }
+                onChange={(event) => props.setInput(event.target.value)}
+                onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+                  const files = filesFromClipboard(event.clipboardData);
+                  if (files.length === 0) {
+                    return;
+                  }
+                  event.preventDefault();
+                  if (props.uploadingAttachments) {
+                    return;
+                  }
+                  void props.onAddAttachments(files);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.metaKey
+                  ) {
+                    event.preventDefault();
+                    void props.onSubmit();
+                  }
+                }}
+              />
+              <Button
+                aria-label={
+                  props.session?.running
+                    ? "Stop current turn"
+                    : props.uploadingAttachments
+                      ? "Uploading"
+                      : "Send message"
+                }
+                disabled={!props.session?.running && !canSend}
+                size="icon"
+                className="h-full min-h-9 max-h-14 w-auto shrink-0 aspect-square"
+                variant={props.session?.running ? "outline" : "default"}
+                onClick={
+                  props.session?.running ? props.onCancel : props.onSubmit
+                }
               >
-                <SelectTrigger className="max-w-[9rem] shrink-0 sm:max-w-[28rem]">
-                  <SelectValue placeholder="Choose model">
-                    {(() => {
-                      const label = modelSelectTriggerLabel(
-                        props.session.models,
-                        props.session.model,
-                      );
-                      if (!label) return null;
-                      return (
-                        <>
-                          <span className="sm:hidden">
-                            {truncateLabel(label, 10)}
-                          </span>
-                          <span className="hidden sm:inline">{label}</span>
-                        </>
-                      );
-                    })()}
+                {props.session?.running ? (
+                  <SquareIcon className="size-4" />
+                ) : props.uploadingAttachments ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <SendIcon className="size-4" />
+                )}
+              </Button>
+            </div>
+            <AttachmentDropzone
+              attachments={props.attachments}
+              uploading={props.uploadingAttachments}
+              onAdd={props.onAddAttachments}
+              onRemove={props.onRemoveAttachment}
+            />
+            <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch]">
+              {props.session?.models.length ? (
+                <Select
+                  value={props.session.model}
+                  disabled={props.session.running}
+                  onValueChange={(value) => void props.onSetModel(value)}
+                >
+                  <SelectTrigger className="max-w-[9rem] shrink-0 sm:max-w-[28rem]">
+                    <SelectValue placeholder="Choose model">
+                      {(() => {
+                        const label = modelSelectTriggerLabel(
+                          props.session.models,
+                          props.session.model,
+                        );
+                        if (!label) return null;
+                        return (
+                          <>
+                            <span className="sm:hidden">
+                              {truncateLabel(label, 10)}
+                            </span>
+                            <span className="hidden sm:inline">{label}</span>
+                          </>
+                        );
+                      })()}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {props.session.models.map((entry) => (
+                        <SelectItem key={entry.name} value={entry.name}>
+                          {entry.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              ) : null}
+              <Select
+                value={
+                  props.reasoningEffort ?? REASONING_EFFORT_SELECT_VALUE_OFF
+                }
+                disabled={!props.session || props.session.running}
+                onValueChange={(value) =>
+                  void props.onSetReasoningEffort(
+                    value === REASONING_EFFORT_SELECT_VALUE_OFF
+                      ? null
+                      : (value as ReasoningEffortLevel),
+                  )
+                }
+              >
+                <SelectTrigger className="shrink-0">
+                  <SelectValue placeholder="Effort">
+                    <span className="sm:hidden">
+                      {effortSelectCompactLabel(props.reasoningEffort)}
+                    </span>
+                    <span className="hidden sm:inline">
+                      {effortSelectTriggerLabel(props.reasoningEffort)}
+                    </span>
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {props.session.models.map((entry) => (
-                      <SelectItem key={entry.name} value={entry.name}>
-                        {entry.name}
+                    <SelectItem value={REASONING_EFFORT_SELECT_VALUE_OFF}>
+                      Off
+                    </SelectItem>
+                    {REASONING_EFFORT_OPTIONS.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {REASONING_EFFORT_LABELS[level]}
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            ) : null}
-            <Select
-              value={props.reasoningEffort ?? REASONING_EFFORT_SELECT_VALUE_OFF}
-              disabled={!props.session || props.session.running}
-              onValueChange={(value) =>
-                void props.onSetReasoningEffort(
-                  value === REASONING_EFFORT_SELECT_VALUE_OFF
-                    ? null
-                    : (value as ReasoningEffortLevel),
-                )
-              }
-            >
-              <SelectTrigger className="shrink-0">
-                <SelectValue placeholder="Effort">
-                  <span className="sm:hidden">
-                    {effortSelectCompactLabel(props.reasoningEffort)}
-                  </span>
-                  <span className="hidden sm:inline">
-                    {effortSelectTriggerLabel(props.reasoningEffort)}
-                  </span>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value={REASONING_EFFORT_SELECT_VALUE_OFF}>
-                    Off
-                  </SelectItem>
-                  {REASONING_EFFORT_OPTIONS.map((level) => (
-                    <SelectItem key={level} value={level}>
-                      {REASONING_EFFORT_LABELS[level]}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <Select
-              value={props.sessionMode}
-              disabled={!props.session || props.session.running}
-              onValueChange={(value) =>
-                void props.onSetSessionMode(value as ChatSessionMode)
-              }
-            >
-              <SelectTrigger className="shrink-0 sm:min-w-[9rem]">
-                <SelectValue placeholder="Mode">
-                  <span className="sm:hidden">
-                    {MODE_SELECT_LABELS[props.sessionMode]}
-                  </span>
-                  <span className="hidden sm:inline">
-                    {modeSelectTriggerLabel(props.sessionMode)}
-                  </span>
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="agent">Agent</SelectItem>
-                  <SelectItem value="plan">Plan</SelectItem>
-                  <SelectItem value="ask">Ask</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <Select
-              value={props.yolo ? "on" : "off"}
-              disabled={!props.session || props.session.running}
-              onValueChange={(value) => void props.onSetYolo(value === "on")}
-            >
-              <SelectTrigger className="shrink-0">
-                <SelectValue placeholder="Yolo">
-                  {props.yolo ? "Yolo · On" : "Yolo · Off"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="off">Off</SelectItem>
-                  <SelectItem value="on">On</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <div className="ml-auto hidden shrink-0 sm:block">
-              <ChatStatusBlip status={props.session?.status ?? "ready"} />
+              <Select
+                value={props.sessionMode}
+                disabled={!props.session || props.session.running}
+                onValueChange={(value) =>
+                  void props.onSetSessionMode(value as ChatSessionMode)
+                }
+              >
+                <SelectTrigger className="shrink-0 sm:min-w-[9rem]">
+                  <SelectValue placeholder="Mode">
+                    <span className="sm:hidden">
+                      {MODE_SELECT_LABELS[props.sessionMode]}
+                    </span>
+                    <span className="hidden sm:inline">
+                      {modeSelectTriggerLabel(props.sessionMode)}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="agent">Agent</SelectItem>
+                    <SelectItem value="plan">Plan</SelectItem>
+                    <SelectItem value="ask">Ask</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Select
+                value={props.yolo ? "on" : "off"}
+                disabled={!props.session || props.session.running}
+                onValueChange={(value) => void props.onSetYolo(value === "on")}
+              >
+                <SelectTrigger className="shrink-0">
+                  <SelectValue placeholder="Yolo">
+                    {props.yolo ? "Yolo · On" : "Yolo · Off"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="off">Off</SelectItem>
+                    <SelectItem value="on">On</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <div className="ml-auto hidden shrink-0 sm:block">
+                <ChatStatusBlip status={props.session?.status ?? "ready"} />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="hidden min-h-0 xl:flex xl:flex-col">
+        <TodoPanel todos={todoItems} className="h-fit" />
+      </div>
+
+      {props.session?.approvals ? (
+        <ApprovalDialog
+          request={props.session.approvals}
+          onApprove={props.onApprove}
+        />
+      ) : null}
     </div>
   );
 }
@@ -629,13 +647,17 @@ function ChatBubble({
   const userContent = isUser
     ? parseMessageAttachments(line.content)
     : { text: line.content, attachments: [] };
+  const isExitPlanMode = isTool && line.toolName === EXIT_PLAN_MODE_TOOL;
   return (
     <div
-      className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+      className={cn(
+        "group/message flex w-full flex-col gap-1",
+        isUser ? "items-end" : "items-start",
+      )}
     >
       <div
         className={cn(
-          "group max-w-[88%] min-w-0 break-words rounded-3xl px-4 py-3 text-sm leading-6 shadow-sm",
+          "max-w-[88%] min-w-0 break-words rounded-3xl px-4 py-3 text-sm leading-6 shadow-sm",
           isUser
             ? "rounded-br-md bg-primary text-primary-foreground"
             : isTool
@@ -679,11 +701,18 @@ function ChatBubble({
             <MarkdownContent content={line.content} />
           ) : !line.done ? (
             <AssistantResponseSkeleton />
-          ) : (
-            <MarkdownContent content="(empty)" />
-          )
+          ) : null
         ) : isTool ? (
-          <ToolArgumentsDisclosure content={line.content} />
+          line.approvalPreview ? (
+            <div className="rounded-xl border bg-muted/30 p-3">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                {isExitPlanMode ? "Proposed plan" : "Preview"}
+              </div>
+              <MarkdownContent content={line.approvalPreview} />
+            </div>
+          ) : (
+            <ToolArgumentsDisclosure content={line.content} />
+          )
         ) : (
           <div className="flex flex-col gap-3">
             {userContent.text ? (
@@ -720,6 +749,45 @@ function ChatBubble({
           </details>
         ) : null}
       </div>
+
+      {isAssistant && line.done && line.content ? (
+        <CopyButton content={line.content} label="Copy response" />
+      ) : null}
+      {isExitPlanMode && line.approvalPreview ? (
+        <CopyButton content={line.approvalPreview} label="Copy plan" />
+      ) : null}
+    </div>
+  );
+}
+
+/** Subtle control (à la ChatGPT) rendered outside the bubble, below it, that copies
+ * the raw markdown of a finished response or proposed plan — not the reasoning trace
+ * above it. Hidden until the message is hovered/focused. */
+function CopyButton({ content, label }: { content: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable (e.g. insecure context) — ignore */
+    }
+  }
+
+  return (
+    <div className="flex opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
+      <Button
+        size="icon-xs"
+        variant="ghost"
+        type="button"
+        className="text-muted-foreground hover:text-foreground"
+        aria-label={copied ? "Copied" : label}
+        onClick={() => void onCopy()}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </Button>
     </div>
   );
 }
@@ -849,17 +917,26 @@ function todoStatusBadgeClass(status: string): string {
 
 function TodoPanel({
   todos,
+  className,
 }: {
   todos: Array<{ content: string; status: string; activeForm: string }>;
+  className?: string;
 }) {
+  const hasTodos = todos.length > 0;
   const completed = todos.filter((t) => t.status === "completed").length;
-  const summary =
-    completed === todos.length
+  const summary = !hasTodos
+    ? "No todos"
+    : completed === todos.length
       ? `${todos.length} done`
       : `${completed}/${todos.length} done`;
 
   return (
-    <Card className="mx-auto w-full max-w-3xl py-0 shadow-sm">
+    <Card
+      className={cn(
+        "mx-auto w-full max-w-3xl py-0 shadow-sm xl:max-w-none",
+        className,
+      )}
+    >
       <CardHeader className="space-y-1 pb-2 pt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base font-semibold">
@@ -875,39 +952,45 @@ function TodoPanel({
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-4 pt-0">
-        <div className="rounded-lg bg-muted/30 p-2">
-          <div className="mb-1.5 text-xs font-medium text-muted-foreground">
-            Tasks
+        {!hasTodos ? (
+          <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+            No active tasks right now.
           </div>
-          <ul className="max-h-52 divide-y divide-border/60 overflow-y-auto">
-            {todos.map((todo, index) => (
-              <li
-                key={`${todo.content}-${index}`}
-                className="flex gap-2 py-2 first:pt-0 last:pb-0"
-              >
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "h-5 shrink-0 self-center px-1.5 text-[10px] font-medium tracking-tight",
-                    todoStatusBadgeClass(todo.status),
-                  )}
+        ) : (
+          <div className="rounded-lg bg-muted/30 p-2">
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+              Tasks
+            </div>
+            <ul className="max-h-52 divide-y divide-border/60 overflow-y-auto">
+              {todos.map((todo, index) => (
+                <li
+                  key={`${todo.content}-${index}`}
+                  className="flex gap-2 py-2 first:pt-0 last:pb-0"
                 >
-                  {todoStatusLabel(todo.status)}
-                </Badge>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium leading-snug">
-                    {todo.activeForm || todo.content}
-                  </p>
-                  {todo.activeForm && todo.activeForm !== todo.content ? (
-                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                      {todo.content}
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "h-5 shrink-0 self-center px-1.5 text-[10px] font-medium tracking-tight",
+                      todoStatusBadgeClass(todo.status),
+                    )}
+                  >
+                    {todoStatusLabel(todo.status)}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium leading-snug">
+                      {todo.activeForm || todo.content}
                     </p>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+                    {todo.activeForm && todo.activeForm !== todo.content ? (
+                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                        {todo.content}
+                      </p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -916,46 +999,53 @@ function TodoPanel({
 /** Built-in hoomanjs tool name for leaving plan mode; used to tailor the approval card copy. */
 const EXIT_PLAN_MODE_TOOL = "exit_plan_mode";
 
-function ApprovalCard(props: {
+function ApprovalDialog(props: {
   request: NonNullable<ChatSessionSnapshot["approvals"]>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
 }) {
   const isPlanReview = props.request.toolName === EXIT_PLAN_MODE_TOOL;
   return (
-    <Card className="mx-auto w-full max-w-3xl">
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2">
-            <WrenchIcon className="size-4 text-muted-foreground" />
-            {isPlanReview ? "Plan review" : "Tool approval required"}
-          </CardTitle>
-          <Badge variant="secondary">{props.request.toolName}</Badge>
+    <Dialog open>
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[min(32rem,85vh)] w-full max-w-lg flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <DialogHeader className="gap-1 border-b px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <DialogTitle className="flex items-center gap-2 text-sm font-medium">
+              <WrenchIcon className="size-4 text-muted-foreground" />
+              {isPlanReview ? "Plan review" : "Tool approval required"}
+            </DialogTitle>
+            <Badge variant="secondary">{props.request.toolName}</Badge>
+          </div>
+          {!isPlanReview && props.request.description ? (
+            <DialogDescription className="line-clamp-2">
+              {props.request.description}
+            </DialogDescription>
+          ) : null}
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          {props.request.preview ? (
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                Proposed plan
+              </div>
+              <MarkdownContent content={props.request.preview} />
+            </div>
+          ) : (
+            <div className="rounded-lg bg-muted/30 p-2">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                Parameters
+              </div>
+              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                {props.request.inputPreview}
+              </pre>
+            </div>
+          )}
         </div>
-        {props.request.description ? (
-          <CardDescription className="line-clamp-2">
-            {props.request.description}
-          </CardDescription>
-        ) : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {props.request.preview ? (
-          <div className="max-h-80 overflow-auto rounded-lg border bg-muted/30 p-3">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">
-              Proposed plan
-            </div>
-            <MarkdownContent content={props.request.preview} />
-          </div>
-        ) : (
-          <div className="rounded-lg bg-muted/30 p-2">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">
-              Parameters
-            </div>
-            <pre className="max-h-20 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed">
-              {props.request.inputPreview}
-            </pre>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-b-xl border-t bg-muted/50 px-4 py-3">
           <Button size="sm" onClick={() => void props.onApprove("allow")}>
             {isPlanReview ? "Approve plan" : "Allow once"}
           </Button>
@@ -975,8 +1065,8 @@ function ApprovalCard(props: {
           >
             {isPlanReview ? "Keep refining" : "Deny"}
           </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

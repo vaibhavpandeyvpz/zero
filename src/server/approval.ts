@@ -8,6 +8,8 @@ import type { ApprovalDecision, ApprovalRequest } from "../client/types.js";
 
 type QueueItem = {
   request: ApprovalRequest;
+  /** Correlates the request back to the tool-call chat line it was raised for. */
+  toolUseId?: string;
   resolve: (decision: ApprovalDecision) => void;
 };
 
@@ -15,13 +17,23 @@ export class ApprovalController {
   private readonly queue: QueueItem[] = [];
   private nextId = 0;
 
-  public constructor(private readonly onChange: () => void = () => {}) {}
+  public constructor(
+    private readonly onChange: () => void = () => {},
+    /** Called synchronously once a request is queued, before `ask` awaits a decision. */
+    private readonly onRequested?: (
+      request: ApprovalRequest,
+      toolUseId?: string,
+    ) => void,
+  ) {}
 
   public get pending(): ApprovalRequest | null {
     return this.queue[0]?.request ?? null;
   }
 
-  public request(toolRequest: ToolApprovalRequest): Promise<ApprovalDecision> {
+  public request(
+    toolRequest: ToolApprovalRequest,
+    toolUseId?: string,
+  ): Promise<ApprovalDecision> {
     const request: ApprovalRequest = {
       id: String(this.nextId++),
       toolName: toolRequest.toolName,
@@ -29,8 +41,9 @@ export class ApprovalController {
       inputPreview: toolRequest.inputPreview,
       preview: toolRequest.preview,
     };
+    this.onRequested?.(request, toolUseId);
     return new Promise<ApprovalDecision>((resolve) => {
-      this.queue.push({ request, resolve });
+      this.queue.push({ request, toolUseId, resolve });
       this.onChange();
     });
   }
@@ -55,8 +68,11 @@ export function createApprovalIntervention(
   controller: ApprovalController,
 ): HoomanToolApprovalIntervention {
   return new HoomanToolApprovalIntervention({
-    ask: async (request) => {
-      const decision = await controller.request(request);
+    ask: async (request, event) => {
+      const decision = await controller.request(
+        request,
+        event.toolUse.toolUseId,
+      );
       if (decision === "deny") {
         return {
           decision: "reject",
