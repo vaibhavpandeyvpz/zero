@@ -913,17 +913,21 @@ function TodoPanel({
   );
 }
 
+/** Built-in hoomanjs tool name for leaving plan mode; used to tailor the approval card copy. */
+const EXIT_PLAN_MODE_TOOL = "exit_plan_mode";
+
 function ApprovalCard(props: {
   request: NonNullable<ChatSessionSnapshot["approvals"]>;
   onApprove: (decision: "allow" | "always" | "deny") => Promise<void>;
 }) {
+  const isPlanReview = props.request.toolName === EXIT_PLAN_MODE_TOOL;
   return (
     <Card className="mx-auto w-full max-w-3xl">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
             <WrenchIcon className="size-4 text-muted-foreground" />
-            Tool approval required
+            {isPlanReview ? "Plan review" : "Tool approval required"}
           </CardTitle>
           <Badge variant="secondary">{props.request.toolName}</Badge>
         </div>
@@ -934,31 +938,42 @@ function ApprovalCard(props: {
         ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        <div className="rounded-lg bg-muted/30 p-2">
-          <div className="mb-1 text-xs font-medium text-muted-foreground">
-            Parameters
+        {props.request.preview ? (
+          <div className="max-h-80 overflow-auto rounded-lg border bg-muted/30 p-3">
+            <div className="mb-1 text-xs font-medium text-muted-foreground">
+              Proposed plan
+            </div>
+            <MarkdownContent content={props.request.preview} />
           </div>
-          <pre className="max-h-20 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed">
-            {props.request.inputPreview}
-          </pre>
-        </div>
+        ) : (
+          <div className="rounded-lg bg-muted/30 p-2">
+            <div className="mb-1 text-xs font-medium text-muted-foreground">
+              Parameters
+            </div>
+            <pre className="max-h-20 overflow-auto whitespace-pre-wrap font-mono text-xs leading-relaxed">
+              {props.request.inputPreview}
+            </pre>
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button size="sm" onClick={() => void props.onApprove("allow")}>
-            Allow once
+            {isPlanReview ? "Approve plan" : "Allow once"}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void props.onApprove("always")}
-          >
-            Always allow
-          </Button>
+          {isPlanReview ? null : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void props.onApprove("always")}
+            >
+              Always allow
+            </Button>
+          )}
           <Button
             size="sm"
             variant="destructive"
             onClick={() => void props.onApprove("deny")}
           >
-            Deny
+            {isPlanReview ? "Keep refining" : "Deny"}
           </Button>
         </div>
       </CardContent>

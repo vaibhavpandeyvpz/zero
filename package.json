@@ -47,7 +47,7 @@
     "commander": "^15.0.0",
     "express": "^5.2.1",
     "fastq": "^1.20.1",
-    "hoomanjs": "^1.37.4",
+    "hoomanjs": "^1.40.2",
     "lucide-react": "^1.23.0",
     "multer": "^2.2.0",
     "next": "^16.2.10",

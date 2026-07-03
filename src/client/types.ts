@@ -85,6 +85,12 @@ export type ApprovalRequest = {
   toolName: string;
   description?: string;
   inputPreview: string;
+  /**
+   * Human-facing preview of the artifact being acted on (e.g. the drafted
+   * plan when the agent calls `exit_plan_mode`). Render this above the raw
+   * input parameters when present.
+   */
+  preview?: string;
 };
 
 /** Session tool surface for web chat (matches Hooman session modes). */

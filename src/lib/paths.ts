@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { projectPath } from "hoomanjs";
 
 const APP_FOLDER = ".zero";
 const ZERO_HOME_ENV = "ZERO_HOME";
@@ -21,12 +22,18 @@ export function mcpJsonPath(): string {
   return join(basePath(), "mcp.json");
 }
 
+/**
+ * Sessions live under hoomanjs's project-scoped storage (keyed off the
+ * server process's cwd/git-root, see hoomanjs's project-registry) so Zero's
+ * own transcript store stays colocated with the agent's own session
+ * snapshots for the same session id.
+ */
 export function sessionsPath(): string {
-  return join(basePath(), "sessions");
+  return join(projectPath(), "sessions");
 }
 
 export function attachmentsPath(): string {
-  return join(basePath(), "attachments");
+  return join(projectPath(), "attachments");
 }
 
 export function skillsPath(): string {

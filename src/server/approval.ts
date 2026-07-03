@@ -27,6 +27,7 @@ export class ApprovalController {
       toolName: toolRequest.toolName,
       description: toolRequest.description,
       inputPreview: toolRequest.inputPreview,
+      preview: toolRequest.preview,
     };
     return new Promise<ApprovalDecision>((resolve) => {
       this.queue.push({ request, resolve });

@@ -1,10 +1,5 @@
 import fastq from "fastq";
-import {
-  bootstrap,
-  consumeExitRequest,
-  setYoloEnabled,
-  type McpManager,
-} from "hoomanjs";
+import { bootstrap, setYoloEnabled, type McpManager } from "hoomanjs";
 import { createChannelApprovalIntervention } from "./approval.js";
 
 export type WorkerAgent = Awaited<ReturnType<typeof bootstrap>>["agent"];
@@ -29,7 +24,6 @@ export type AgentWorkerJob = {
   onSuccess?: (agent: WorkerAgent) => void;
   onError?: (error: unknown) => void;
   onComplete?: (agent: WorkerAgent) => void;
-  onExit?: () => void | Promise<void>;
 };
 
 export class AgentWorker {
@@ -39,7 +33,6 @@ export class AgentWorker {
   private activeAgent: WorkerAgent | null = null;
   /** Shared with channel/daemon jobs (auto-approve tools). */
   private defaultYolo = false;
-  private readonly resetListeners = new Set<() => void | Promise<void>>();
   private readonly queue: fastq.queueAsPromised<AgentWorkerJob, void>;
 
   public constructor() {
@@ -71,11 +64,6 @@ export class AgentWorker {
     }
   }
 
-  public onReset(listener: () => void | Promise<void>): () => void {
-    this.resetListeners.add(listener);
-    return () => this.resetListeners.delete(listener);
-  }
-
   public async getMcpManager(): Promise<McpManager> {
     await this.ensureDefaultAgent();
     return this.defaultManager!;
@@ -97,10 +85,6 @@ export class AgentWorker {
     await this.defaultManager?.disconnect().catch(() => undefined);
     this.defaultManager = null;
     this.defaultAgent = null;
-  }
-
-  private async notifyReset(): Promise<void> {
-    await Promise.all([...this.resetListeners].map((listener) => listener()));
   }
 
   private async ensureDefaultAgent(): Promise<WorkerAgent> {
@@ -156,11 +140,6 @@ export class AgentWorker {
     } finally {
       if (agent) {
         job.onComplete?.(agent);
-        if (!job.agent && consumeExitRequest(agent)) {
-          await this.resetAgent();
-          await this.notifyReset();
-          await job.onExit?.();
-        }
       }
       if (this.activeJob?.id === job.id) {
         this.activeJob = null;
